@@ -1,5 +1,6 @@
 import type { Address, PublicClient, SimulateCallsReturnType, StateOverride } from "viem";
 import type { ZeroXConfig, ZeroXQuoteResponse } from "./aggregators/0x.js";
+import type { CurveConfig, CurveQuoteResponse } from "./aggregators/curve.js";
 import type { FabricConfig, FabricQuoteResponse } from "./aggregators/fabric.js";
 import type { FyndConfig, FyndQuoteResponse } from "./aggregators/fynd.js";
 import type { Aggregator } from "./aggregators/index.js";
@@ -17,6 +18,10 @@ import type { AggregatorProxy } from "./wire/proxy.js";
  * Definitions for each supported provider including their configuration and quote response types.
  */
 export type ProviderDefinitions = {
+  curve: {
+    config: CurveConfig;
+    quote: CurveQuoteResponse;
+  };
   fabric: {
     config: FabricConfig;
     quote: FabricQuoteResponse;

@@ -50,6 +50,9 @@
   "scripts": {
     "build": "bun --cwd ../.. ./scripts/build-packages.ts core"
   },
+  "dependencies": {
+    "@curvefi/api": "^2.69.1"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "prool": "^0.2.1",
