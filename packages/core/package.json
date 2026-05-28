@@ -45,10 +45,11 @@
   },
   "files": [
     "dist",
+    "lib",
+    "index.ts",
     "README.md"
   ],
   "scripts": {
-    "prepare": "bun --cwd ../.. ./scripts/build-packages.ts core",
     "build": "bun --cwd ../.. ./scripts/build-packages.ts core"
   },
   "dependencies": {
