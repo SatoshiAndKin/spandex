@@ -50,10 +50,11 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun --cwd ../.. ./scripts/build-packages.ts core"
+    "build": "bun --cwd ../.. ./scripts/build-packages.ts core",
+    "prepack": "bun --cwd ../.. ./scripts/build-packages.ts core"
   },
   "dependencies": {
-    "@curvefi/api": "^2.69.1"
+    "@curvefi/api": "2.69.18"
   },
   "devDependencies": {
     "@types/bun": "latest",

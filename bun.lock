@@ -69,7 +69,7 @@
       "name": "@spandex/core",
       "version": "0.11.1",
       "dependencies": {
-        "@curvefi/api": "^2.69.1",
+        "@curvefi/api": "2.69.18",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -249,7 +249,7 @@
 
     "@clack/prompts": ["@clack/prompts@0.7.0", "", { "dependencies": { "@clack/core": "^0.3.3", "is-unicode-supported": "*", "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-0MhX9/B4iL6Re04jPrttDm+BsP8y6mS7byuv0BvXgdXhbV5PdlsHt55dvNsuBCPZ7xq1oTAOOuotR9NFbQyMSA=="],
 
-    "@curvefi/api": ["@curvefi/api@2.70.1", "", { "dependencies": { "@curvefi/ethcall": "6.0.20", "bignumber.js": "^10.0.2", "ethers": "^6.16.0", "memoizee": "^0.4.17" } }, "sha512-Ri+DqW7BISubW1pILxMFuaDKMV5I4wuEdgZy9TM9DJtO7O5CB3o3In4PuFngzw0sxoudLIzv93iCHpB6OE3qow=="],
+    "@curvefi/api": ["@curvefi/api@2.69.18", "", { "dependencies": { "@curvefi/ethcall": "6.0.20", "bignumber.js": "^10.0.2", "ethers": "^6.16.0", "memoizee": "^0.4.17" } }, "sha512-d8chqQAVaf/z25VUlV64vEh00SlGPjXn//gbcYSXvuC2ZdiD59R9shetDvteIzhw/VdDXGMmRJFVXQI/5dwfHA=="],
 
     "@curvefi/ethcall": ["@curvefi/ethcall@6.0.20", "", { "dependencies": { "@types/node": "^22.12.0", "abi-coder": "^5.0.0" }, "peerDependencies": { "ethers": "^6.0.0" } }, "sha512-2OywgfyGDe9jZeeVjLv2UhpWuybV2MjtigT04pzDVtqRtrS69AwPuqXhFt3dHdhTqV3ZLINXtjiUCXDX5GKKLw=="],
 

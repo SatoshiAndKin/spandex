@@ -21,7 +21,7 @@ const DEFAULT_SUPPORTED_CHAINS = [1, 8453, 42161, 10, 137, 56, 43114];
 
 export type CurveConfig = ProviderConfig & {
   /** Function to look up an RPC URL for a chain ID to initialize Curve SDK */
-  rpcUrlLookup?: (chainId: number) => string | undefined;
+  rpcUrlLookup: (chainId: number) => string | undefined;
   /**
    * Chain IDs this curve deployment should be queried for.
    * Defaults to: Ethereum, Base, Arbitrum, Optimism, Polygon, BNB, Avalanche
@@ -29,12 +29,10 @@ export type CurveConfig = ProviderConfig & {
   supportedChains?: number[];
 };
 
-export interface CurveRouteStep {
-  inputCoinAddress?: string;
-  outputCoinAddress?: string;
-  poolAddress?: string;
-  poolId?: string;
-}
+type CurveSdkInstance = ReturnType<typeof createCurve>;
+export type CurveRouteStep = Awaited<
+  ReturnType<CurveSdkInstance["router"]["getBestRouteAndOutput"]>
+>["route"][number];
 
 export type CurveQuoteResponse = {
   route: CurveRouteStep[];
@@ -44,46 +42,13 @@ export type CurveQuoteResponse = {
 
 type TokenData = { symbol: string; decimals: number };
 
-type CurveSdkInstance = {
-  chainId: number;
-  init: (type: string, settings: { url: string }, options: { chainId: number }) => Promise<void>;
-  factory: { fetchPools: () => Promise<void> };
-  crvUSDFactory: { fetchPools: () => Promise<void> };
-  cryptoFactory: { fetchPools: () => Promise<void> };
-  twocryptoFactory: { fetchPools: () => Promise<void> };
-  tricryptoFactory: { fetchPools: () => Promise<void> };
-  stableNgFactory: { fetchPools: () => Promise<void> };
-  getCoinsData: (addresses: string[]) => Promise<Array<{ symbol?: string; decimals?: number }>>;
-  hasAllowance: (
-    coins: string[],
-    amounts: string[],
-    address: string,
-    spender: string,
-  ) => Promise<boolean>;
-  router: {
-    getBestRouteAndOutput: (
-      from: string,
-      to: string,
-      amount: string,
-    ) => Promise<{ route: CurveRouteStep[]; output: string }>;
-    populateSwap: (
-      from: string,
-      to: string,
-      amount: string,
-    ) => Promise<{ to?: string | null; data?: string | null; value?: string | null }>;
-    required: (from: string, to: string, outputAmount: string) => Promise<string>;
-  };
-};
-
-// Per-chain curve instances
-const curveInstances = new Map<number, CurveSdkInstance>();
-const initErrors = new Map<number, string>();
-const tokenDataCache = new Map<string, TokenData>();
-
 /**
  * Aggregator implementation for the Curve SDK.
  */
 export class CurveAggregator extends Aggregator<CurveConfig> {
+  private readonly instances = new Map<string, Promise<CurveSdkInstance>>();
+  private readonly tokenData = new Map<string, TokenData>();
+
   override metadata(): AggregatorMetadata {
     return {
       name: "curve",
@@ -114,62 +79,48 @@ export class CurveAggregator extends Aggregator<CurveConfig> {
       throw new QuoteError(`Curve aggregator does not support chain ${chainId}`);
     }
 
-    if (curveInstances.has(chainId)) {
-      return curveInstances.get(chainId) as CurveSdkInstance;
-    }
-
-    if (initErrors.has(chainId)) {
-      throw new QuoteError(
-        `Curve SDK failed to initialize for chain ${chainId}: ${initErrors.get(chainId)}`,
-      );
-    }
-
-    const rpcUrl = this.config.rpcUrlLookup?.(chainId);
+    const rpcUrl = this.config.rpcUrlLookup(chainId);
     if (!rpcUrl) {
       throw new QuoteError(`No RPC URL available for Curve SDK initialization on chain ${chainId}`);
     }
+    const key = `${chainId}:${rpcUrl}`;
+    const cached = this.instances.get(key);
+    if (cached) return cached;
 
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const curve = createCurve() as unknown as CurveSdkInstance;
-      await curve.init("JsonRpc", { url: rpcUrl }, { chainId });
+    const pending = this.initialize(chainId, rpcUrl).catch((error: unknown) => {
+      this.instances.delete(key);
+      throw new QuoteError(`Failed to initialize Curve SDK for chain ${chainId}`, { cause: error });
+    });
+    this.instances.set(key, pending);
+    return pending;
+  }
 
-      await Promise.all([
-        curve.factory.fetchPools(),
-        curve.crvUSDFactory.fetchPools(),
-        curve.cryptoFactory.fetchPools(),
-        curve.twocryptoFactory.fetchPools(),
-        curve.tricryptoFactory.fetchPools(),
-        curve.stableNgFactory.fetchPools(),
-      ]);
-
-      curveInstances.set(chainId, curve);
-      return curve;
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      initErrors.set(chainId, errorMsg);
-      throw new QuoteError(`Failed to initialize Curve SDK for chain ${chainId}: ${errorMsg}`);
-    }
+  private async initialize(chainId: number, rpcUrl: string): Promise<CurveSdkInstance> {
+    const instance = createCurve();
+    await instance.init("JsonRpc", { url: rpcUrl }, { chainId });
+    await Promise.all([
+      instance.factory.fetchPools(),
+      instance.crvUSDFactory.fetchPools(),
+      instance.cryptoFactory.fetchPools(),
+      instance.twocryptoFactory.fetchPools(),
+      instance.tricryptoFactory.fetchPools(),
+      instance.stableNgFactory.fetchPools(),
+    ]);
+    return instance;
   }
 
   private async getCurveTokenData(curve: CurveSdkInstance, address: string): Promise<TokenData> {
     const key = `${curve.chainId}:${address.toLowerCase()}`;
-    const cached = tokenDataCache.get(key);
+    const cached = this.tokenData.get(key);
     if (cached !== undefined) return cached;
 
-    try {
-      const data = await curve.getCoinsData([address]);
-      const tokenData = {
-        symbol: data[0]?.symbol || "",
-        decimals: data[0]?.decimals ?? 18,
-      };
-      tokenDataCache.set(key, tokenData);
-      return tokenData;
-    } catch {
-      const fallback = { symbol: "", decimals: 18 };
-      tokenDataCache.set(key, fallback);
-      return fallback;
+    const [data] = await curve.getCoinsData([address]);
+    if (!data || !Number.isInteger(data.decimals) || data.decimals < 0 || data.decimals > 255) {
+      throw new QuoteError(`Invalid Curve token metadata for ${address} on chain ${curve.chainId}`);
     }
+    const tokenData = { symbol: data.symbol, decimals: data.decimals };
+    this.tokenData.set(key, tokenData);
+    return tokenData;
   }
 
   protected override async tryFetchQuote(
@@ -203,13 +154,13 @@ export class CurveAggregator extends Aggregator<CurveConfig> {
         const outDecimalStr = formatUnits(request.outputAmount, outData.decimals);
         const requiredInput = await curve.router.required(fromLower, toLower, outDecimalStr);
         inputAmountDecimalStr = requiredInput;
-        outputAmountDecimalStr = outDecimalStr;
         const routeResult = await curve.router.getBestRouteAndOutput(
           fromLower,
           toLower,
           inputAmountDecimalStr,
         );
         route = routeResult.route;
+        outputAmountDecimalStr = routeResult.output;
       } else {
         const inDecimalStr = formatUnits(request.inputAmount, inData.decimals);
         const routeResult = await curve.router.getBestRouteAndOutput(
@@ -238,7 +189,12 @@ export class CurveAggregator extends Aggregator<CurveConfig> {
       );
     }
 
-    const swapTx = await curve.router.populateSwap(fromLower, toLower, inputAmountDecimalStr);
+    const swapTx = await curve.router.populateSwap(
+      fromLower,
+      toLower,
+      inputAmountDecimalStr,
+      request.slippageBps / 100,
+    );
     if (!swapTx.to || !swapTx.data) {
       throw new QuoteError("Failed to generate Curve swap transaction");
     }
@@ -247,23 +203,11 @@ export class CurveAggregator extends Aggregator<CurveConfig> {
     const inputAmountRaw = parseUnits(inputAmountDecimalStr, inData.decimals);
     const outputAmountRaw = parseUnits(outputAmountDecimalStr, outData.decimals);
 
-    let approval: { token: Address; spender: Address } | undefined;
-    try {
-      const isApproved = await curve.hasAllowance(
-        [fromLower],
-        [inputAmountDecimalStr],
-        request.swapperAccount,
-        swapTx.to,
-      );
-      if (!isApproved && !isNativeToken(request.inputToken)) {
-        approval = {
-          token: request.inputToken,
-          spender: swapTx.to as Address,
-        };
-      }
-    } catch {
-      // Approval check failed, skip it
-    }
+    // Expose the allowance identity even when the wallet already has sufficient allowance.
+    // buildCalls and consumers check its current value before submitting an approval.
+    const approval = isNativeToken(request.inputToken)
+      ? undefined
+      : { token: request.inputToken, spender: swapTx.to as Address };
 
     return {
       success: true,
@@ -328,6 +272,6 @@ export class CurveAggregator extends Aggregator<CurveConfig> {
   }
 }
 
-export function curve(config: CurveConfig = {}): CurveAggregator {
+export function curve(config: CurveConfig): CurveAggregator {
   return new CurveAggregator(config);
 }

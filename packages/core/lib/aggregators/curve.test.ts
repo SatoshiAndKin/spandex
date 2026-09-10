@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { parseUnits } from "viem";
 import { defaultSwapParams } from "../../test/utils.js";
 import { curve } from "./curve.js";
@@ -59,6 +59,108 @@ mock.module("@curvefi/api", () => {
 });
 
 describe("curve", () => {
+  beforeEach(() => {
+    mockCurveInstance.init.mockClear();
+    mockCurveInstance.router.populateSwap.mockClear();
+  });
+
+  it("shares concurrent initialization and retries after a failed initialization", async () => {
+    const aggregator = curve({ rpcUrlLookup: () => "https://test.rpc" });
+    mockCurveInstance.init.mockRejectedValueOnce(new Error("RPC unavailable"));
+    const failed = await aggregator.fetchQuote(defaultSwapParams, { numRetries: 0 });
+    expect(failed.success).toBe(false);
+    const quotes = await Promise.all([
+      aggregator.fetchQuote(defaultSwapParams, { numRetries: 0 }),
+      aggregator.fetchQuote(defaultSwapParams, { numRetries: 0 }),
+    ]);
+    expect(quotes.map((quote) => quote.success)).toEqual([true, true]);
+    expect(mockCurveInstance.init).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not reuse SDK state across different configured RPC endpoints", async () => {
+    await curve({ rpcUrlLookup: () => "https://first.rpc" }).fetchQuote(defaultSwapParams);
+    await curve({ rpcUrlLookup: () => "https://second.rpc" }).fetchQuote(defaultSwapParams);
+    expect(mockCurveInstance.init).toHaveBeenNthCalledWith(
+      1,
+      "JsonRpc",
+      { url: "https://first.rpc" },
+      { chainId: 8453 },
+    );
+    expect(mockCurveInstance.init).toHaveBeenNthCalledWith(
+      2,
+      "JsonRpc",
+      { url: "https://second.rpc" },
+      { chainId: 8453 },
+    );
+  });
+
+  it("does not substitute 18 decimals when metadata lookup fails", async () => {
+    mockCurveInstance.getCoinsData.mockRejectedValueOnce(new Error("metadata unavailable"));
+    const quote = await curve({ rpcUrlLookup: () => "https://test.rpc" }).fetchQuote(
+      defaultSwapParams,
+      { numRetries: 0 },
+    );
+    expect(quote.success).toBe(false);
+    expect(mockCurveInstance.router.populateSwap).not.toHaveBeenCalled();
+  });
+
+  it("keeps zero-decimal token amounts", async () => {
+    mockCurveInstance.getCoinsData.mockResolvedValueOnce([{ symbol: "ZERO", decimals: 0 }]);
+    const quote = await curve({ rpcUrlLookup: () => "https://test.rpc" }).fetchQuote(
+      { ...defaultSwapParams, inputAmount: 1n },
+      { numRetries: 0 },
+    );
+    expect(quote.success && quote.inputAmount).toBe(1n);
+    expect(mockCurveInstance.router.populateSwap).toHaveBeenCalledWith(
+      INPUT_TOKEN,
+      OUTPUT_TOKEN,
+      "1",
+      1,
+    );
+  });
+
+  it("omits approval for native input", async () => {
+    const quote = await curve({ rpcUrlLookup: () => "https://test.rpc" }).fetchQuote(
+      { ...defaultSwapParams, inputToken: "0x0000000000000000000000000000000000000000" },
+      { numRetries: 0 },
+    );
+    expect(quote.success && quote.approval).toBeUndefined();
+  });
+
+  it.each([0, 10, 50, 100])("passes %i basis points for targetOut", async (slippageBps) => {
+    const quote = await curve({ rpcUrlLookup: () => "https://test.rpc" }).fetchQuote(
+      {
+        chainId: 8453,
+        inputToken: defaultSwapParams.inputToken,
+        outputToken: defaultSwapParams.outputToken,
+        swapperAccount: defaultSwapParams.swapperAccount,
+        mode: "targetOut",
+        outputAmount: 123456789n,
+        slippageBps,
+      },
+      { numRetries: 0 },
+    );
+    expect(quote.success && quote.outputAmount).toBe(123456789n);
+    expect(mockCurveInstance.router.populateSwap).toHaveBeenCalledWith(
+      INPUT_TOKEN,
+      OUTPUT_TOKEN,
+      "500.0",
+      slippageBps / 100,
+    );
+  });
+
+  it.each([0, 10, 50, 100])("passes %i basis points to Curve as percent", async (slippageBps) => {
+    mockCurveInstance.router.populateSwap.mockClear();
+    const aggregator = curve({ rpcUrlLookup: () => "https://test.rpc" });
+    await aggregator.fetchQuote({ ...defaultSwapParams, slippageBps }, { numRetries: 0 });
+    expect(mockCurveInstance.router.populateSwap).toHaveBeenCalledWith(
+      INPUT_TOKEN,
+      OUTPUT_TOKEN,
+      "0.0000000005",
+      slippageBps / 100,
+    );
+  });
+
   it("provides metadata", () => {
     const aggregator = curve({
       rpcUrlLookup: () => "https://test.rpc",
@@ -94,7 +196,7 @@ describe("curve", () => {
     expect(quote.outputAmount).toBe(parseUnits("123.456789", 6));
     expect(quote.txData.to).toBe(ROUTER);
     expect(quote.txData.data).toBe("0x1234");
-    expect(quote.approval).toBeUndefined(); // mock hasAllowance returns true
+    expect(quote.approval).toEqual({ token: defaultSwapParams.inputToken, spender: ROUTER });
 
     expect(quote.route?.nodes.length).toBe(2);
     expect(quote.route?.edges.length).toBe(1);
