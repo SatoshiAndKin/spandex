@@ -1,4 +1,5 @@
 import { ZeroXAggregator, zeroX } from "./lib/aggregators/0x.js";
+import { CurveAggregator, curve } from "./lib/aggregators/curve.js";
 import { FabricAggregator, fabric } from "./lib/aggregators/fabric.js";
 import { FyndAggregator, fynd } from "./lib/aggregators/fynd.js";
 import { KyberAggregator, kyberswap } from "./lib/aggregators/kyber.js";
@@ -35,6 +36,8 @@ export {
   simulatedQuoteStreamErrorHandler,
 } from "./lib/wire/streams.js";
 export {
+  CurveAggregator,
+  curve,
   FabricAggregator,
   FyndAggregator,
   fabric,
