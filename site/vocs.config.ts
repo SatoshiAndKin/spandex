@@ -150,8 +150,8 @@ export default defineConfig({
               link: "/react/hooks/useQuotes",
             },
             {
-              text: "useQuoteExecutor",
-              link: "/react/hooks/useQuoteExecutor",
+              text: "useExecuteQuote",
+              link: "/react/hooks/useExecuteQuote",
             },
           ],
         },
@@ -196,16 +196,24 @@ export default defineConfig({
           link: "/providers/0x",
         },
         {
+          text: "Fynd",
+          link: "/providers/fynd",
+        },
+        {
           text: "KyberSwap",
           link: "/providers/kyberswap",
         },
         {
-          text: "Odos",
+          text: "Odos (deprecated)",
           link: "/providers/odos",
         },
         {
           text: "LiFi",
           link: "/providers/lifi",
+        },
+        {
+          text: "Mobula",
+          link: "/providers/mobula",
         },
         {
           text: "Nordstern",

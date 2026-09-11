@@ -1,5 +1,34 @@
 # @spandex/core
 
+## 0.11.0
+
+### Minor Changes
+
+- fda0900: Add fynd (hosted and self-hosted) and mobula to provider set.
+
+## 0.10.0
+
+### Minor Changes
+
+- 4fb4589: Add caller-provided state overrides to quote simulation, including delegated proxy simulation.
+
+## 0.9.1
+
+### Patch Changes
+
+- 0b32378: Deprecate the Odos provider. Constructing it now warns, and quoting returns an immediate failed
+  quote without retries or network requests. Remove Odos from the default provider set.
+
+## 0.9.0
+
+## 0.8.1
+
+## 0.8.0
+
+### Minor Changes
+
+- 0611ab9: Add o1 provider adapter support.
+
 ## 0.7.3
 
 ### Patch Changes

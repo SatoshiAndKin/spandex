@@ -1,17 +1,23 @@
-import { createConfig, defaultProviders, o1, zeroX, type SwapParams } from "@spandex/core";
+import {
+  createConfig,
+  deserializeWithBigInt,
+  fabric,
+  fynd,
+  kyberswap,
+  mobula,
+  type SimulationOptions,
+  type SwapParams,
+} from "@spandex/core";
 import { createPublicClient } from "viem";
 import { z } from "zod";
 import { configuredChains } from "@/config/onchain";
 
 export const proxyConfig = createConfig({
   providers: [
-    ...defaultProviders({
-      appId: "spandex_ui",
-    }),
-    process.env.O1_BASE_URL && process.env.O1_API_KEY
-      ? o1({ baseUrl: process.env.O1_BASE_URL, apiKey: process.env.O1_API_KEY })
-      : undefined,
-    process.env.ZEROX_API_KEY ? zeroX({ apiKey: process.env.ZEROX_API_KEY }) : undefined,
+    fabric({ appId: "spandex_ui" }),
+    kyberswap({ clientId: "spandex_ui" }),
+    process.env.FYND_API_KEY ? fynd({ apiKey: process.env.FYND_API_KEY }) : undefined,
+    process.env.MOBULA_API_KEY ? mobula({ apiKey: process.env.MOBULA_API_KEY }) : undefined,
   ].filter((p): p is NonNullable<typeof p> => Boolean(p)),
   options: {
     deadlineMs: 5_000,
@@ -30,6 +36,7 @@ const baseSchema = z.object({
   slippageBps: z.coerce.number().int().nonnegative().max(10000),
   swapperAccount: addressSchema,
   recipientAccount: addressSchema.optional(),
+  simulationOptions: z.string().optional(),
 });
 
 export const quoteQuerySchema = z.discriminatedUnion("mode", [
@@ -44,7 +51,17 @@ export const quoteQuerySchema = z.discriminatedUnion("mode", [
 ]);
 
 export function parseSwapFromRequest(request: Request): SwapParams {
-  return quoteQuerySchema.parse(
-    Object.fromEntries(new URL(request.url).searchParams),
-  ) satisfies SwapParams;
+  const { simulationOptions: _, ...swap } = parseQuoteQuery(request);
+  return swap;
+}
+
+export function parseSimulationOptionsFromRequest(request: Request): SimulationOptions | undefined {
+  const { simulationOptions } = parseQuoteQuery(request);
+  return simulationOptions
+    ? deserializeWithBigInt<SimulationOptions>(simulationOptions)
+    : undefined;
+}
+
+function parseQuoteQuery(request: Request) {
+  return quoteQuerySchema.parse(Object.fromEntries(new URL(request.url).searchParams));
 }

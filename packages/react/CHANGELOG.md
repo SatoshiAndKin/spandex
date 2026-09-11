@@ -1,5 +1,50 @@
 # @spandex/react
 
+## 0.11.0
+
+### Patch Changes
+
+- Updated dependencies [fda0900]
+  - @spandex/core@0.11.0
+
+## 0.10.0
+
+### Patch Changes
+
+- Updated dependencies [4fb4589]
+  - @spandex/core@0.10.0
+
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [0b32378]
+  - @spandex/core@0.9.1
+
+## 0.9.0
+
+### Minor Changes
+
+- 4510078: Add a `useExecuteQuote` mutation hook for executing selected quotes with Wagmi-backed wallet and public clients.
+
+### Patch Changes
+
+- @spandex/core@0.9.0
+
+## 0.8.1
+
+### Patch Changes
+
+- 868f1b3: Fix `SpandexProvider` handing core a bare wagmi `Client` cast as `PublicClient`. Clients are now extended with viem `publicActions`, so core code paths that call client methods directly (e.g. the allowance check in `buildCalls` during quote execution) work instead of throwing `client.<method> is not a function`.
+  - @spandex/core@0.8.1
+
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [0611ab9]
+  - @spandex/core@0.8.0
+
 ## 0.7.3
 
 ### Patch Changes

@@ -1,9 +1,12 @@
-import type { Address, PublicClient, SimulateCallsReturnType } from "viem";
+import type { Address, PublicClient, SimulateCallsReturnType, StateOverride } from "viem";
 import type { ZeroXConfig, ZeroXQuoteResponse } from "./aggregators/0x.js";
+import type { CurveConfig, CurveQuoteResponse } from "./aggregators/curve.js";
 import type { FabricConfig, FabricQuoteResponse } from "./aggregators/fabric.js";
+import type { FyndConfig, FyndQuoteResponse } from "./aggregators/fynd.js";
 import type { Aggregator } from "./aggregators/index.js";
 import type { KyberConfig, KyberQuoteResponse } from "./aggregators/kyber.js";
 import type { LifiConfig, LifiQuoteResponse } from "./aggregators/lifi.js";
+import type { MobulaConfig, MobulaQuoteResponse } from "./aggregators/mobula.js";
 import type { NordsternConfig, NordsternQuoteResponse } from "./aggregators/nordstern.js";
 import type { O1Config, O1QuoteResponse } from "./aggregators/o1.js";
 import type { OdosConfig, OdosQuoteResponse } from "./aggregators/odos.js";
@@ -15,6 +18,10 @@ import type { AggregatorProxy } from "./wire/proxy.js";
  * Definitions for each supported provider including their configuration and quote response types.
  */
 export type ProviderDefinitions = {
+  curve: {
+    config: CurveConfig;
+    quote: CurveQuoteResponse;
+  };
   fabric: {
     config: FabricConfig;
     quote: FabricQuoteResponse;
@@ -23,6 +30,10 @@ export type ProviderDefinitions = {
     config: ZeroXConfig;
     quote: ZeroXQuoteResponse;
   };
+  fynd: {
+    config: FyndConfig;
+    quote: FyndQuoteResponse;
+  };
   kyberswap: {
     config: KyberConfig;
     quote: KyberQuoteResponse;
@@ -30,6 +41,10 @@ export type ProviderDefinitions = {
   lifi: {
     config: LifiConfig;
     quote: LifiQuoteResponse;
+  };
+  mobula: {
+    config: MobulaConfig;
+    quote: MobulaQuoteResponse;
   };
   nordstern: {
     config: NordsternConfig;
@@ -650,6 +665,19 @@ export type ConfigParams = DirectConfigParams | ProxyConfigParams;
 ///////////////////// Simulation Types /////////////////////
 
 /**
+ * Optional controls for quote simulation behavior.
+ *
+ * @public
+ */
+export type SimulationOptions = {
+  /**
+   * Account and storage overrides forwarded to `simulateCalls`.
+   * Caller-provided values take precedence over spanDEX simulation defaults.
+   */
+  stateOverrides?: StateOverride;
+};
+
+/**
  * Parameters required to simulate a single quote.
  *
  * @public
@@ -661,6 +689,8 @@ export type SimulationArgs = {
   swap: SwapParams;
   /** Quote to simulate, including the encoded transaction data. */
   quote: Quote;
+  /** Optional simulation controls, including caller-provided state overrides. */
+  simulationOptions?: SimulationOptions;
 };
 
 /**
