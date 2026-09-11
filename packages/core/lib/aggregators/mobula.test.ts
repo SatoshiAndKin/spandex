@@ -313,9 +313,9 @@ function mockMobulaResponse(
 }
 
 const MOBULA_API_KEY = process.env.MOBULA_API_KEY;
-const ANKR_API_KEY = process.env.ANKR_API_KEY;
+const BASE_RPC_URL = process.env.RPC_URL_8453;
 
-describe.skipIf(!MOBULA_API_KEY || !ANKR_API_KEY)("mobula integration", () => {
+describe.skipIf(!MOBULA_API_KEY || !BASE_RPC_URL)("mobula integration", () => {
   const provider = () => mobula({ apiKey: MOBULA_API_KEY ?? "" });
 
   it("fetches a live quote", async () => {

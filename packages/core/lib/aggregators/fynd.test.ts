@@ -312,9 +312,9 @@ function mockFyndResponse(overrides: Partial<FyndOrderQuote> = {}): FyndQuoteRes
 }
 
 const FYND_API_KEY = process.env.FYND_API_KEY;
-const ANKR_API_KEY = process.env.ANKR_API_KEY;
+const BASE_RPC_URL = process.env.RPC_URL_8453;
 
-describe.skipIf(!FYND_API_KEY || !ANKR_API_KEY)("fynd integration", () => {
+describe.skipIf(!FYND_API_KEY || !BASE_RPC_URL)("fynd integration", () => {
   const provider = () => fynd({ apiKey: FYND_API_KEY ?? "" });
 
   it("fetches a live quote", async () => {

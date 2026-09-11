@@ -1,18 +1,15 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { fail } from "node:assert";
 import { createServer } from "node:net";
-import { afterEach } from "node:test";
 import { Instance, Server } from "prool";
 import { createPublicClient, createWalletClient, erc20Abi, http, type PublicClient } from "viem";
 import { base } from "viem/chains";
-import { recordedSimulation } from "../test/utils.js";
+import { baseRpcUrl, recordedSimulation } from "../test/utils.js";
 import type { FabricQuoteResponse } from "./aggregators/fabric.js";
 import { fabric } from "./aggregators/fabric.js";
 import { createConfig } from "./createConfig.js";
 import { executeQuote } from "./executeQuote.js";
 import type { SwapParams } from "./types.js";
-
-const ANKR_API_KEY = process.env.ANKR_API_KEY || "";
 
 const swap: SwapParams = {
   chainId: 8453,
@@ -48,7 +45,7 @@ async function createFork(forkBlockNumber: bigint) {
   forkRpcUrl = `http://127.0.0.1:${port}/1`;
   server = Server.create({
     instance: Instance.anvil({
-      forkUrl: `https://rpc.ankr.com/base/${ANKR_API_KEY}`,
+      forkUrl: baseRpcUrl,
       forkBlockNumber,
       autoImpersonate: true,
     }),
@@ -62,7 +59,7 @@ async function createFork(forkBlockNumber: bigint) {
 
 const baseClient = createPublicClient({
   chain: base,
-  transport: http(`https://rpc.ankr.com/base/${ANKR_API_KEY}`),
+  transport: http(baseRpcUrl),
 }) as PublicClient;
 
 function forkClient(): PublicClient {
