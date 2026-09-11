@@ -12,7 +12,7 @@ import {
   type SwapParams,
   zeroX,
 } from "../index.js";
-import { nativeOutputSwap, TEST_RPC_URL } from "../test/utils.js";
+import { baseRpcUrl, nativeOutputSwap } from "../test/utils.js";
 import { createConfig } from "./createConfig.js";
 
 const defaultSwapParams: SwapParams = {
@@ -31,7 +31,7 @@ const USDC_WHALE = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
 describe("getQuotes", () => {
   const client = createPublicClient({
     chain: base,
-    transport: http(TEST_RPC_URL),
+    transport: http(baseRpcUrl),
   }) as PublicClient;
 
   const config = createConfig({

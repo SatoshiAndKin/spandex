@@ -14,7 +14,7 @@
 - `bun run pack`: create tarballs for `packages/core` and `packages/react`.
 - `bun run lint`: run Biome formatting + lint checks.
 - `bun run lint:fix`: apply Biome fixes across the repo.
-- `bun test`: run the Bun test runner (uses `bunfig.toml` coverage settings).
+- `bun test`: run the Bun test runner (uses `bunfig.toml` coverage settings). Set `RPC_URL_8453` to a Base RPC URL with archive state and `eth_simulateV1` support for live tests and Anvil forks. Tests use the public Base RPC when this setting is absent.
 - `bun --cwd site run dev`: start the documentation site locally.
 
 ## Coding Style & Naming Conventions
