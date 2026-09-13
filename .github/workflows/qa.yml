@@ -35,7 +35,9 @@ jobs:
       - name: Build packages
         run: bun run build
       - name: Run tests
-        run: bun test
+        run: |
+          : "${RPC_URL_8453:?Set the Base RPC_URL_8453 repository secret}"
+          bun test
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
-          RPC_URL_8453: https://rpc.ankr.com/base/${{ secrets.ANKR_API_KEY }}
+          RPC_URL_8453: ${{ secrets.RPC_URL_8453 }}
