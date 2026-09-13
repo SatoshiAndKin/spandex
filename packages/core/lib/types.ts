@@ -670,6 +670,8 @@ export type ConfigParams = DirectConfigParams | ProxyConfigParams;
  * @public
  */
 export type SimulationOptions = {
+  /** Gas price for the swap call, in wei. Defaults to the client's current gas price. */
+  gasPrice?: bigint;
   /**
    * Account and storage overrides forwarded to `simulateCalls`.
    * Caller-provided values take precedence over spanDEX simulation defaults.

@@ -10,6 +10,80 @@ const slot = toHex(1n, { size: 32 });
 const slotValue = toHex(500_000_000n, { size: 32 });
 
 describe("simulation state overrides", () => {
+  it("uses the RPC gas price on the swap without charging balance probes", async () => {
+    const requests: CapturedRequest[] = [];
+    const quote = await simulateQuote({
+      client: createSimulationClient(requests),
+      swap: defaultSwapParams,
+      quote: validQuote(),
+    });
+    expect(quote.simulation.success).toBe(true);
+    expect(requests[0]?.params[0].blockStateCalls[0]?.calls.map((call) => call.gasPrice)).toEqual([
+      undefined,
+      undefined,
+      "0x64",
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("uses an explicit zero gas price without requesting an estimate", async () => {
+    const requests: CapturedRequest[] = [];
+    const client = createSimulationClient(requests);
+    client.getGasPrice = async () => {
+      throw new Error("must not fetch");
+    };
+    const quote = await simulateQuote({
+      client,
+      swap: defaultSwapParams,
+      quote: validQuote(),
+      simulationOptions: { gasPrice: 0n },
+    });
+    expect(quote.simulation.success).toBe(true);
+    expect(requests[0]?.params[0].blockStateCalls[0]?.calls[2]?.gasPrice).toBe("0x0");
+  });
+
+  it("fails simulation when the gas price cannot be obtained", async () => {
+    const requests: CapturedRequest[] = [];
+    const client = createSimulationClient(requests);
+    client.getGasPrice = async () => {
+      throw new Error("gas price unavailable");
+    };
+    const quote = await simulateQuote({ client, swap: defaultSwapParams, quote: validQuote() });
+    expect(quote.simulation.success).toBe(false);
+    expect(requests).toHaveLength(0);
+  });
+
+  it.each([false, true])("rejects gas-sensitive reverts (cross-chain: %s)", async (crossChain) => {
+    const quote = await simulateQuote({
+      client: createSimulationClient([], { rejectPricedSwap: true }),
+      swap: { ...defaultSwapParams, ...(crossChain ? { outputChainId: 10 } : {}) },
+      quote: validQuote(),
+    });
+    expect(quote.simulation.success).toBe(false);
+  });
+
+  it.each(["payer", "recipient", "token"])("keeps gross output for %s", async (recipient) => {
+    const native = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+    const quote = await simulateQuote({
+      client: createSimulationClient([], {
+        before: 10000n,
+        after: recipient === "payer" ? 9000n : 11000n,
+      }),
+      swap: {
+        ...defaultSwapParams,
+        ...(recipient !== "token" ? { outputToken: native } : {}),
+        ...(recipient === "recipient"
+          ? { recipientAccount: "0x5555555555555555555555555555555555555555" as const }
+          : {}),
+      },
+      quote: validQuote(),
+      simulationOptions: { gasPrice: 2000n },
+    });
+    expect(quote.simulation.success).toBe(true);
+    if (quote.simulation.success) expect(quote.simulation.outputAmount).toBe(1000n);
+  });
+
   it("keeps defaults, adds other accounts, and lets caller values win", () => {
     const swapper = "0x2222222222222222222222222222222222222222";
     const token = "0x4444444444444444444444444444444444444444";
@@ -185,7 +259,7 @@ type CapturedRequest = {
   params: [
     {
       blockStateCalls: Array<{
-        calls: unknown[];
+        calls: Record<string, unknown>[];
         stateOverrides?: Record<string, unknown>;
       }>;
     },
@@ -203,23 +277,30 @@ function validQuote(): SuccessfulQuote {
   };
 }
 
-function createSimulationClient(requests: CapturedRequest[]): PublicClient {
+function createSimulationClient(
+  requests: CapturedRequest[],
+  options: { before?: bigint; after?: bigint; rejectPricedSwap?: boolean } = {},
+): PublicClient {
   return {
     chain: base,
+    getGasPrice: async () => 100n,
     request: async (request: CapturedRequest) => {
       requests.push(request);
       const calls = request.params[0].blockStateCalls[0]?.calls ?? [];
       return [
         {
           number: "0x1",
-          calls: calls.map((_, index) => ({
-            status: "0x1",
+          calls: calls.map((call, index) => ({
+            status: options.rejectPricedSwap && call.gasPrice ? "0x0" : "0x1",
+            ...(options.rejectPricedSwap && call.gasPrice
+              ? { error: { code: 3, message: "gas price rejected" } }
+              : {}),
             gasUsed: "0x1",
             returnData:
               index === 1
-                ? toHex(100n, { size: 32 })
+                ? toHex(options.before ?? 100n, { size: 32 })
                 : index === 3
-                  ? toHex(200n, { size: 32 })
+                  ? toHex(options.after ?? 200n, { size: 32 })
                   : "0x",
           })),
         },
