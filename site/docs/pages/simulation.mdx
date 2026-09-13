@@ -32,6 +32,16 @@ To enable onchain simulation, you'll need:
 
 ## Indicative Quotes with State Overrides
 
+The swap call uses the client's current gas price. Set `simulationOptions.gasPrice`
+in wei to simulate a specific transaction fee. If the RPC cannot provide a gas
+price, simulation fails instead of assuming a free transaction. Balance probes
+use zero fees, and native output received by the payer includes the swap fee
+back in the measured amount. This keeps output amounts gross of gas costs.
+
+Simulation checks the chosen fee and current state. A wallet can choose another
+fee, and chain state can change before execution; those changes can still cause
+a transaction to revert.
+
 For an indicative quote, the swapper account may not hold the input token. Pass viem state
 overrides through `simulationOptions` after resolving the token's balance storage slot:
 

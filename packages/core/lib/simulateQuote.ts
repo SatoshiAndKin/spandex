@@ -128,7 +128,8 @@ async function performSimulation({
     const recipientAccount = swap.recipientAccount ?? swap.swapperAccount;
     const approvalToken = quote.approval?.token ?? swap.inputToken;
     const approvalSpender = quote.approval?.spender ?? quote.txData.to;
-    const calls: TxData[] = [];
+    const gasPrice = simulationOptions?.gasPrice ?? (await client.getGasPrice());
+    const calls: Array<TxData & { gasPrice?: bigint }> = [];
 
     // Build calls in a stable order: optional approve, recipient balance before, swap, recipient balance after.
     if (!isNativeToken(swap.inputToken)) {
@@ -149,7 +150,7 @@ async function performSimulation({
       holderAddress: recipientAccount,
     });
     calls.push(balanceCall);
-    calls.push(quote.txData);
+    calls.push({ ...quote.txData, gasPrice });
     calls.push(balanceCall);
 
     const time = performance.now();
@@ -170,10 +171,18 @@ async function performSimulation({
     const [beforeBalanceResult, swapResult, afterBalanceResult] = results.slice(-3);
 
     // Extract the output amount from the balance deltas and validate it
-    const outputAmount = extractOutputAmountFromBalances({
+    let outputAmount = extractOutputAmountFromBalances({
       beforeBalanceResult: beforeBalanceResult as SimulateCallsReturnType["results"][0],
       afterBalanceResult: afterBalanceResult as SimulateCallsReturnType["results"][0],
     });
+    // Balance probes have zero fees. Restore the swap fee only when the payer
+    // also receives native output, so output remains gross of execution costs.
+    if (
+      isNativeToken(swap.outputToken) &&
+      recipientAccount.toLowerCase() === swap.swapperAccount.toLowerCase()
+    ) {
+      outputAmount += (swapResult?.gasUsed ?? 0n) * gasPrice;
+    }
     validateOutputAmount(outputAmount);
 
     return {
@@ -216,7 +225,8 @@ async function performCrossChainSimulation({
   try {
     const approvalToken = quote.approval?.token ?? swap.inputToken;
     const approvalSpender = quote.approval?.spender ?? quote.txData.to;
-    const calls: TxData[] = [];
+    const gasPrice = simulationOptions?.gasPrice ?? (await client.getGasPrice());
+    const calls: Array<TxData & { gasPrice?: bigint }> = [];
 
     if (!isNativeToken(swap.inputToken)) {
       calls.push({
@@ -228,7 +238,7 @@ async function performCrossChainSimulation({
         }),
       });
     }
-    calls.push(quote.txData);
+    calls.push({ ...quote.txData, gasPrice });
     const time = performance.now();
     const { results, block } = await simulateCalls(client, {
       account: swap.swapperAccount,
@@ -239,6 +249,7 @@ async function performCrossChainSimulation({
       ),
     });
     const latency = performance.now() - time;
+    validateSimulation(results, calls, block);
     const swapResult = results[results.length - 1];
     const approvalResult = results.length > 1 ? results[0] : undefined;
     return {
