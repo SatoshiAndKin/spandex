@@ -1,14 +1,9 @@
-import { describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { fabric, zeroX } from "@spandex/core";
+import { createClient, http } from "viem";
+import { base } from "viem/chains";
 import { render, screen } from "../../test/utils.js";
 import { useSpandexConfig } from "./SpandexProvider.js";
-
-mock.module("wagmi", () => ({
-  useConnection: () => ({
-    address: undefined,
-    chain: undefined,
-  }),
-}));
 
 function TestComponent() {
   const config = useSpandexConfig();
@@ -22,6 +17,14 @@ function ClientProbe({ chainId }: { chainId: number }) {
 }
 
 describe("SpandexProvider", () => {
+  beforeEach(() => {
+    const client = createClient({ chain: base, transport: http() });
+    mock.module("wagmi", () => ({
+      useConnection: () => ({ address: undefined, chain: undefined }),
+      useConfig: () => ({ getClient: () => client }),
+    }));
+  });
+
   it("should provide metaAggregator to children", () => {
     render(<TestComponent />, {
       spandexConfig: {
