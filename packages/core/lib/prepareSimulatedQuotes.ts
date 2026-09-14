@@ -12,21 +12,26 @@ import type { Quote, SimulatedQuote, SimulationOptions, SwapParams } from "./typ
  * @param params.swap - Swap request parameters.
  * @param params.client - Public client used to simulate quote transaction data.
  * @param params.simulationOptions - Optional simulation controls, including state overrides.
+ * @param params.signal - Optional proxy fetch and stream cancellation signal.
+ * Callers own the controller and abort it when they finish selecting quotes.
  * @returns Quotes enriched with simulation metadata.
  */
 export async function prepareSimulatedQuotes({
   config,
   swap,
+  signal,
   client,
   simulationOptions,
 }: {
   config: Config;
   swap: SwapParams;
+  signal?: AbortSignal;
   client?: PublicClient;
   simulationOptions?: SimulationOptions;
 }): Promise<Promise<SimulatedQuote>[]> {
+  signal?.throwIfAborted();
   if (config.proxy?.isDelegatedAction("prepareSimulatedQuotes")) {
-    return config.proxy.prepareSimulatedQuotes(swap, simulationOptions);
+    return config.proxy.prepareSimulatedQuotes(swap, simulationOptions, signal);
   }
 
   if (config.proxy && config.aggregators.length === 0) {
@@ -51,5 +56,5 @@ export async function prepareSimulatedQuotes({
     });
   };
 
-  return await prepareQuotes({ config, swap, mapFn });
+  return await prepareQuotes({ config, swap, mapFn, signal });
 }

@@ -45,26 +45,26 @@ export class AggregatorProxy {
    * Request quotes from the configured proxy endpoint.
    *
    * @param params - Swap parameters to retrieve quotes for
+   * @param signal - Optional fetch and stream cancellation signal.
    * @returns Promises that resolve to individual quote results as they stream in.
    */
-  async prepareQuotes(params: SwapParams): Promise<Array<Promise<Quote>>> {
+  async prepareQuotes(params: SwapParams, signal?: AbortSignal): Promise<Array<Promise<Quote>>> {
     this.assertDelegatedAction("prepareQuotes");
     const query = quoteQueryParams(params);
-    return this.fetchStream<Quote>(
-      `${this.baseUrl}/prepareQuotes?${query.toString()}`,
-      decodeStream,
-    );
+    return this.fetchStream<Quote>(`${this.baseUrl}/prepareQuotes?${query.toString()}`, signal);
   }
 
   /**
    * Request simulated quotes from the configured proxy endpoint.
    * @param params - Swap parameters to retrieve quotes for
+   * @param signal - Optional fetch and stream cancellation signal.
    * @param simulationOptions - Optional controls forwarded to server-side simulation.
    * @returns Promises that resolve to individual simulated quote results as they stream in.
    */
   async prepareSimulatedQuotes(
     params: SwapParams,
     simulationOptions?: SimulationOptions,
+    signal?: AbortSignal,
   ): Promise<Array<Promise<SimulatedQuote>>> {
     this.assertDelegatedAction("prepareSimulatedQuotes");
     const query = quoteQueryParams(params);
@@ -73,7 +73,7 @@ export class AggregatorProxy {
     }
     return this.fetchStream<SimulatedQuote>(
       `${this.baseUrl}/prepareSimulatedQuotes?${query.toString()}`,
-      decodeStream,
+      signal,
     );
   }
 
@@ -89,30 +89,23 @@ export class AggregatorProxy {
     }
   }
 
-  private async fetchStream<T>(
-    url: string,
-    decode: (
-      stream: ReadableStream<Uint8Array>,
-      options?: { onCancel?: (reason?: unknown) => void },
-    ) => Promise<Array<Promise<T>>>,
-  ): Promise<Array<Promise<T>>> {
-    const controller = new AbortController();
+  private async fetchStream<T>(url: string, signal?: AbortSignal): Promise<Array<Promise<T>>> {
+    signal?.throwIfAborted();
     const response = await fetch(url, {
       method: "GET",
       headers: this.config.headers,
-      signal: controller.signal,
+      signal,
     });
 
     if (!response.ok) {
+      void response.body?.cancel().catch(() => {});
       throw new Error(`Proxy request failed with status ${response.status}`);
     }
     if (!response.body) {
       throw new Error("No response body from proxy");
     }
 
-    return decode(response.body, {
-      onCancel: (reason) => controller.abort(reason),
-    });
+    return decodeStream<T>(response.body, { signal });
   }
 }
 
