@@ -11,6 +11,7 @@
 - `bun install`: install workspace dependencies.
 - `bun run build`: build all workspace packages via `scripts/build-packages.ts`.
 - `bun ./scripts/build-packages.ts core`: build a single workspace by name/path.
+- `bun run typecheck`: check package source, tests, and public imports after package builds.
 - `bun run pack`: create tarballs for `packages/core` and `packages/react`.
 - `bun run lint`: run Biome formatting + lint checks.
 - `bun run lint:fix`: apply Biome fixes across the repo.

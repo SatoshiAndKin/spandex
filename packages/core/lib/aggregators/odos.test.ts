@@ -36,10 +36,13 @@ describe("Odos", () => {
   it("always returns a failed quote immediately without making a request", async () => {
     const originalFetch = globalThis.fetch;
     let fetchCalls = 0;
-    globalThis.fetch = (() => {
-      fetchCalls += 1;
-      throw new Error("Odos should not make a request");
-    }) as typeof fetch;
+    globalThis.fetch = Object.assign(
+      () => {
+        fetchCalls += 1;
+        throw new Error("Odos should not make a request");
+      },
+      { preconnect: originalFetch.preconnect },
+    );
 
     const requests: SwapParams[] = [
       defaultSwapParams,
@@ -73,6 +76,7 @@ describe("Odos", () => {
         expect(quote.success).toBe(false);
         expect(quote.provider).toBe("odos");
         expect(quote.providerAttributes).toEqual({ legacy: true });
+        if (quote.success) throw new Error("Expected Odos to fail");
         expect(quote.error).toBeInstanceOf(QuoteError);
         expect(quote.error?.message).toMatch(/Odos provider is deprecated/);
       }

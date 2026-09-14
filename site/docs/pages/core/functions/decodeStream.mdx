@@ -8,15 +8,23 @@ Decode a stream produced by `newStream` into an array of promises.
 import type { SimulatedQuote } from "@spandex/core";
 import { decodeStream } from "@spandex/core";
 
-const response = await fetch("/api/prepareSimulatedQuotes");
-if (!response.body) {
-  throw new Error("No response body");
+const controller = new AbortController();
+try {
+  const response = await fetch("/api/prepareSimulatedQuotes", {
+    signal: controller.signal,
+  });
+  if (!response.body) {
+    throw new Error("No response body");
+  }
+
+  const quotePromises = await decodeStream<SimulatedQuote>(response.body, {
+    signal: controller.signal,
+  });
+  const quotes = await Promise.all(quotePromises);
+  console.log(quotes.length);
+} finally {
+  controller.abort();
 }
-
-const quotePromises = await decodeStream<SimulatedQuote>(response.body);
-const quotes = await Promise.all(quotePromises);
-
-console.log(quotes.length);
 ```
 
 ## Params
@@ -26,8 +34,22 @@ console.log(quotes.length);
 
 Stream of serialized values produced by `newStream`.
 
+### options.signal
+`AbortSignal | undefined`
+
+Optional cancellation signal. Pass the same signal to `fetch` and `decodeStream`.
+You own the controller. Call `abort(reason)` when you finish reading or selecting quotes.
+
+An abort before the header rejects `decodeStream`. An abort after the header rejects
+pending value promises with the exact `signal.reason`. Completed values stay available.
+The decoder releases its reader and removes its signal listener when it finishes or fails.
+A truncated stream rejects the results that it did not receive.
+
 ## Returns
 
 `Promise<Array<Promise<T>>>`
 
-Promises that resolve to streamed values.
+A plain array of promises that resolve to streamed values. `Promise.all` returns `T[]`,
+with standard array methods such as `find` and `every`. Use `AbortSignal` for cancellation.
+
+Aborting a proxy stream does not guarantee that server-side provider or RPC work stops.

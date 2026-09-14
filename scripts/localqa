@@ -10,6 +10,7 @@ bun i
 bun run lint:fix
 bun audit --audit-level=critical
 bun run build
+bun run typecheck
 bun test
 
 (

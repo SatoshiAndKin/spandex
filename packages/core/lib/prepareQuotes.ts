@@ -7,19 +7,29 @@ import { isCrossChain } from "./util/helpers.js";
  * Generates quote promises for all configured aggregators.
  *
  * @param params - Swap request parameters.
+ * @param params.signal - Optional proxy fetch and stream cancellation signal.
+ * Callers own the controller and abort it when they finish selecting quotes.
  * @returns Array of quote promises to be awaited elsewhere.
  */
 export async function prepareQuotes<T>({
   config,
   swap,
+  signal,
   mapFn,
 }: {
   config: Config;
   swap: SwapParams;
+  signal?: AbortSignal;
   mapFn: (quote: Quote) => Promise<T>;
 }): Promise<Array<Promise<T>>> {
+  signal?.throwIfAborted();
   if (config.proxy?.isDelegatedAction("prepareQuotes")) {
-    return (await config.proxy.prepareQuotes(swap)).map((a) => a.then(mapFn));
+    return (await config.proxy.prepareQuotes(swap, signal)).map((quote) => {
+      const mapped = quote.then(mapFn);
+      // Preserve rejection for consumers without an unhandled rejection on abort.
+      void mapped.catch(() => {});
+      return mapped;
+    });
   }
 
   if (config.proxy && config.aggregators.length === 0) {

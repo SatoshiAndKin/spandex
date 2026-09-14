@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { defaultSwapParams, MockAggregator, quoteFailure, quoteSuccess } from "../../test/utils.js";
 import type { FailedQuote } from "../types.js";
 import { deadline } from "./index.js";
@@ -49,13 +49,7 @@ describe("aggregator", () => {
 
   it("clears the deadline timer when the quote resolves first", async () => {
     const mock = new MockAggregator(quoteSuccess);
-    const originalClearTimeout = globalThis.clearTimeout;
-    let cleared = false;
-
-    globalThis.clearTimeout = ((timeout) => {
-      cleared = true;
-      return originalClearTimeout(timeout);
-    }) as typeof clearTimeout;
+    const clearTimeoutSpy = spyOn(globalThis, "clearTimeout");
 
     try {
       const quote = await mock.fetchQuote(defaultSwapParams, {
@@ -63,9 +57,9 @@ describe("aggregator", () => {
       });
 
       expect(quote.success).toBe(true);
-      expect(cleared).toBe(true);
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
     } finally {
-      globalThis.clearTimeout = originalClearTimeout;
+      clearTimeoutSpy.mockRestore();
     }
   }, 500);
 });

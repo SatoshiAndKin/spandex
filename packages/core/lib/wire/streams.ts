@@ -6,12 +6,8 @@ const STREAM_MAGIC = 0xdec5feed;
 // Currently no flags are defined (reserved for future use)
 const STREAM_FLAGS = 0;
 
-type CancellablePromiseArray<T> = Array<Promise<T>> & {
-  cancel?: (reason?: unknown) => void;
-};
-
 type DecodeStreamOptions = {
-  onCancel?: (reason?: unknown) => void;
+  signal?: AbortSignal;
 };
 
 export type StreamErrorHandler<T> = (error: unknown) => T;
@@ -80,62 +76,69 @@ function newSerializedStream<T>(promises: Array<Promise<T>>, onRejected: StreamE
  * Decodes a ReadableStream of serialized values into an array of promises.
  *
  * @param stream - A ReadableStream produced by `newStream`.
+ * @param options.signal - Cancels reading and rejects pending values with the abort reason.
  * @returns An array of promises that resolve as each value is streamed.
  */
 export async function decodeStream<T>(
   stream: ReadableStream<Uint8Array>,
   options?: DecodeStreamOptions,
-): Promise<CancellablePromiseArray<T>> {
+): Promise<Promise<T>[]> {
   return decodeSerializedStream(stream, decodeValueFrame<T>, options);
 }
 
 async function decodeSerializedStream<T>(
   stream: ReadableStream<Uint8Array>,
-  decodeFrame: (frame: Uint8Array) => T | undefined,
+  decodeFrame: (frame: Uint8Array) => T,
   options?: DecodeStreamOptions,
-): Promise<CancellablePromiseArray<T>> {
+): Promise<Promise<T>[]> {
   const reader = stream.getReader();
-  let buffer: Uint8Array = new Uint8Array(0);
+  const signal = options?.signal;
+  let deferred: ReturnType<typeof createDeferred<T>>[] = [];
 
-  while (buffer.length < 6) {
-    const { value, done } = await reader.read();
-    if (done) {
-      reader.releaseLock();
-      throw new Error("Quote stream ended before header was received.");
-    }
-    buffer = appendBuffer(buffer, value);
-  }
-
-  const { count } = decodeHeaderFrame(buffer.subarray(0, 6));
-  const deferred = Array.from({ length: count }, () => createDeferred<T>());
-  const promises = deferred.map(({ promise }) => promise) as CancellablePromiseArray<T>;
-  buffer = buffer.slice(6);
-  let cancelled = false;
-
-  const cancel = (reason?: unknown) => {
-    if (cancelled) {
-      return;
-    }
-    cancelled = true;
-    const error = normalizeCancelReason(reason);
-    options?.onCancel?.(error);
+  const cancelReader = (reason?: unknown) => {
+    // A source can reject cancellation or take time to finish its own cleanup.
+    void reader.cancel(reason).catch(() => {});
+  };
+  const onAbort = () => {
     for (const item of deferred) {
-      item.rejectIfPending(error);
+      item.rejectIfPending(signal?.reason);
     }
-    void reader.cancel(error).catch(() => {});
+    cancelReader(signal?.reason);
+  };
+  const cleanup = () => {
+    signal?.removeEventListener("abort", onAbort);
+    reader.releaseLock();
   };
 
-  promises.cancel = cancel;
+  signal?.addEventListener("abort", onAbort, { once: true });
+  let buffer: Uint8Array = new Uint8Array(0);
+  let count: number;
+  try {
+    signal?.throwIfAborted();
+    while (buffer.length < 6) {
+      const { value, done } = await reader.read();
+      signal?.throwIfAborted();
+      if (done) {
+        throw new Error("Quote stream ended before header was received.");
+      }
+      buffer = appendBuffer(buffer, value);
+    }
+    ({ count } = decodeHeaderFrame(buffer.subarray(0, 6)));
+    deferred = Array.from({ length: count }, () => createDeferred<T>());
+    buffer = buffer.slice(6);
+  } catch (error) {
+    const reason = signal?.aborted ? signal.reason : error;
+    cancelReader(reason);
+    cleanup();
+    throw reason;
+  }
 
   void (async () => {
     let index = 0;
-
     try {
-      while (index < count && !cancelled) {
-        while (true) {
-          if (buffer.length < 4) {
-            break;
-          }
+      while (index < count) {
+        signal?.throwIfAborted();
+        while (index < count && buffer.length >= 4) {
           const payloadLength = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(
             0,
             false,
@@ -144,45 +147,33 @@ async function decodeSerializedStream<T>(
           if (buffer.length < frameLength) {
             break;
           }
-          const frame = buffer.subarray(0, frameLength);
-          const value = decodeFrame(frame);
-          if (!value) {
-            break;
-          }
-          deferred[index]?.resolve(value);
+          deferred[index]?.resolve(decodeFrame(buffer.subarray(0, frameLength)));
           index += 1;
           buffer = buffer.slice(frameLength);
         }
-
-        if (index >= count || cancelled) {
+        if (index >= count) {
           break;
         }
-
         const { value, done } = await reader.read();
+        signal?.throwIfAborted();
         if (done) {
-          break;
+          throw new Error("Quote stream ended before all quotes were received.");
         }
         buffer = appendBuffer(buffer, value);
       }
-
-      if (!cancelled && index < count) {
-        const error = new Error("Quote stream ended before all quotes were received.");
-        for (let i = index; i < count; i += 1) {
-          deferred[i]?.rejectIfPending(error);
-        }
-      }
+      cancelReader();
     } catch (error) {
-      if (!cancelled) {
-        for (let i = index; i < count; i += 1) {
-          deferred[i]?.rejectIfPending(error);
-        }
+      const reason = signal?.aborted ? signal.reason : error;
+      for (const item of deferred) {
+        item.rejectIfPending(reason);
       }
+      cancelReader(reason);
     } finally {
-      reader.releaseLock();
+      cleanup();
     }
   })();
 
-  return promises;
+  return deferred.map(({ promise }) => promise);
 }
 
 /// Helper Functions ///
@@ -254,10 +245,11 @@ function createDeferred<T>() {
       innerReject(error);
     };
   });
+  // Consumers can select an early result or attach handlers after cancellation.
+  void promise.catch(() => {});
   return {
     promise,
     resolve,
-    reject,
     rejectIfPending: reject,
   };
 }
@@ -306,20 +298,10 @@ function encodeValueFrame<T>(value: T): Uint8Array {
   return frame;
 }
 
-function decodeValueFrame<T>(frame: Uint8Array): T | undefined {
+function decodeValueFrame<T>(frame: Uint8Array): T {
   const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
   const payloadLength = view.getUint32(0, false);
-  if (frame.byteLength - 4 < payloadLength) {
-    return undefined;
-  }
   const payload = frame.subarray(4, 4 + payloadLength);
   const decoder = new TextDecoder();
   return deserializeWithBigInt<T>(decoder.decode(payload));
-}
-
-function normalizeCancelReason(reason?: unknown): Error {
-  if (reason instanceof Error) {
-    return reason;
-  }
-  return new Error("Quote stream cancelled");
 }
