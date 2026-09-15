@@ -96,6 +96,15 @@ Optional simulation controls. Use `stateOverrides` to provide viem account or st
 indicative quotes where the swapper does not have the required onchain balance. Caller-provided
 values take precedence over spanDEX's built-in native-balance override.
 
+## Cancellation
+
+`getQuote` owns an `AbortController` for proxy requests. It aborts the remaining stream
+when selection returns a quote, returns `null`, or throws. This includes `fastest`,
+`firstN`, benchmark, and custom selection strategies.
+
+Aborting a proxy stream does not guarantee cancellation of server-side provider or RPC work.
+For direct preparation and selection, [use your own controller](./selectQuote.mdx).
+
 ## Returns
 
 `Promise<SuccessfulSimulatedQuote | null>`

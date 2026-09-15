@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { FabricQuoteResponse } from "./aggregators/fabric.js";
+import { simulatedQuoteSuccess } from "../test/utils.js";
 import { selectQuote } from "./selectQuote.js";
 import type {
   AggregatorFeature,
@@ -8,35 +8,7 @@ import type {
   SuccessfulSimulatedQuote,
 } from "./types.js";
 
-const baseSimulation: SimulationSuccess = {
-  success: true,
-  outputAmount: 900_000n,
-  latency: 0,
-  gasUsed: 5_000n,
-  blockNumber: 0n,
-};
-
-const quoteSuccess: SuccessfulSimulatedQuote = {
-  success: true,
-  provider: "fabric",
-  details: {} as FabricQuoteResponse,
-  latency: 100,
-  inputChainId: 8453,
-  outputChainId: 8453,
-  execution: "atomic",
-  inputAmount: 1_000_000n,
-  outputAmount: 900_000n,
-  networkFee: 5_000n,
-  txData: { to: "0x0", data: "0x0" },
-  simulation: baseSimulation,
-  performance: {
-    latency: 100,
-    gasUsed: 5_000n,
-    outputAmount: 900_000n,
-    priceDelta: 0,
-    accuracy: 0,
-  },
-};
+const quoteSuccess = simulatedQuoteSuccess;
 
 const quoteFailure: SimulatedQuote = {
   success: false,
@@ -96,24 +68,32 @@ describe("selectQuote", () => {
     expect(output?.simulation.outputAmount).toBe(7_457n);
   }, 1_000);
 
-  it("cancels remaining work after fastest succeeds", async () => {
-    let cancelled = false;
-    const pending = Object.assign(
-      [
-        withDelay(makeSuccessfulQuote({ outputAmount: 10n }), 20),
-        withDelay(makeSuccessfulQuote({ outputAmount: 9n }), 200),
-      ],
-      {
-        cancel: () => {
-          cancelled = true;
-        },
-      },
-    );
-
+  it("leaves remaining promises available to the caller after fastest succeeds", async () => {
+    const pending = [
+      withDelay(makeSuccessfulQuote({ outputAmount: 10n }), 1),
+      withDelay(makeSuccessfulQuote({ outputAmount: 9n }), 20),
+    ];
     const output = await selectQuote({ strategy: "fastest", quotes: pending });
     expect(output?.simulation.outputAmount).toBe(10n);
-    expect(cancelled).toBe(true);
-  }, 1_000);
+    expect((await pending[1])?.simulation.outputAmount).toBe(9n);
+  });
+
+  it("observes late rejections when a custom selector throws before consuming quotes", async () => {
+    const { promise, reject } = Promise.withResolvers<SimulatedQuote>();
+    const selectionError = new Error("selection failed");
+    await expect(
+      selectQuote({
+        quotes: [promise],
+        strategy: async () => {
+          throw selectionError;
+        },
+      }),
+    ).rejects.toBe(selectionError);
+    const quoteError = new Error("provider failed after selection");
+    reject(quoteError);
+    await Bun.sleep(0);
+    await expect(promise).rejects.toBe(quoteError);
+  });
 
   it("custom selection composes firstN with bestPrice", async () => {
     const pending = [
@@ -234,7 +214,8 @@ describe("selectQuote", () => {
     });
 
     expect(output).toBeDefined();
-    expect(["fabric", "odos"]).toContain(output?.provider);
+    if (!output) throw new Error("Expected a selected quote");
+    expect(["fabric", "odos"]).toContain(output.provider);
   });
 
   it("price selection - best simulated output relative to input is chosen", async () => {

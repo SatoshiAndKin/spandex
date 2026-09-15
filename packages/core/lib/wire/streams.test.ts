@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { defaultSwapParams, testConfig } from "../../test/utils.js";
+import { defaultSwapParams, simulatedQuoteSuccess, testConfig } from "../../test/utils.js";
 import { fabric } from "../aggregators/fabric.js";
 import { relay } from "../aggregators/relay.js";
 import { prepareQuotes } from "../prepareQuotes.js";
@@ -11,31 +11,7 @@ import {
   simulatedQuoteStreamErrorHandler,
 } from "./streams.js";
 
-const simulatedQuote: SimulatedQuote = {
-  success: true,
-  provider: "fabric",
-  details: {},
-  latency: 0,
-  inputAmount: 1_000_000n,
-  outputAmount: 900_000n,
-  networkFee: 1n,
-  txData: { to: "0x0000000000000000000000000000000000000001", data: "0x" },
-  simulation: {
-    success: true,
-    outputAmount: 900_000n,
-    swapResult: { status: "success" },
-    latency: 0,
-    gasUsed: 1n,
-    blockNumber: 1n,
-  },
-  performance: {
-    latency: 0,
-    gasUsed: 1n,
-    outputAmount: 900_000n,
-    priceDelta: 0,
-    accuracy: 0,
-  },
-} as SimulatedQuote;
+const simulatedQuote = simulatedQuoteSuccess;
 
 describe("streaming", () => {
   it("properly streams serialized quotes", async () => {

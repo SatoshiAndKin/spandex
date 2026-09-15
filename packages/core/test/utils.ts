@@ -6,8 +6,10 @@ import { Aggregator } from "../lib/aggregators/index.js";
 import type {
   AggregatorFeature,
   AggregatorMetadata,
+  ExactInSwapParams,
   ProviderKey,
   Quote,
+  SimulationSuccess,
   SuccessfulQuote,
   SuccessfulSimulatedQuote,
   SwapOptions,
@@ -15,10 +17,10 @@ import type {
 } from "../lib/types.js";
 
 export const baseRpcUrl = process.env.RPC_URL_8453 || base.rpcUrls.default.http[0];
-export const ETH_WHALE = "0x611f7bf868a6212f871e89f7e44684045ddfb09d";
-export const USDC_WHALE = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
+export const ETH_WHALE: `0x${string}` = "0x611f7bf868a6212f871e89f7e44684045ddfb09d";
+export const USDC_WHALE: `0x${string}` = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
 
-export const defaultSwapParams: SwapParams = {
+export const defaultSwapParams: ExactInSwapParams = {
   chainId: 8453,
   inputToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   outputToken: "0x4200000000000000000000000000000000000006",
@@ -28,27 +30,38 @@ export const defaultSwapParams: SwapParams = {
   mode: "exactIn",
 };
 
-export const usdcBalanceSwap: SwapParams = {
+export const usdcBalanceSwap: ExactInSwapParams = {
   ...defaultSwapParams,
   swapperAccount: USDC_WHALE,
 };
 
-export const nativeInputSwap: SwapParams = {
+export const nativeInputSwap: ExactInSwapParams = {
   ...defaultSwapParams,
   inputToken: zeroAddress,
   inputAmount: parseEther("1"),
   outputToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 };
 
-export const nativeOutputSwap: SwapParams = {
+export const nativeOutputSwap: ExactInSwapParams = {
   ...usdcBalanceSwap,
   outputToken: zeroAddress,
 };
 
-export const quoteSuccess: SuccessfulQuote = {
+export const quoteSuccess = {
   success: true,
   provider: "fabric",
-  details: {} as FabricQuoteResponse,
+  details: {
+    blockNumber: 1,
+    amountIn: "1000000",
+    amountOut: "900000",
+    price: 0.9,
+    description: "Test swap",
+    tokens: [],
+    route: { swaps: [], amountIn: "1000000", amountOut: "900000" },
+    transaction: { to: zeroAddress, data: "0x", value: "0" },
+    fees: [],
+    id: "test-quote",
+  } satisfies FabricQuoteResponse,
   latency: 100,
   inputChainId: 8453,
   outputChainId: 8453,
@@ -56,8 +69,29 @@ export const quoteSuccess: SuccessfulQuote = {
   inputAmount: 1_000_000n,
   outputAmount: 900_000n,
   networkFee: 5_000n,
-  txData: { to: "0x0", data: "0x0" },
-};
+  txData: { to: zeroAddress, data: "0x" },
+} satisfies SuccessfulQuote;
+
+export const simulationSuccess = {
+  success: true,
+  outputAmount: quoteSuccess.outputAmount,
+  latency: 0,
+  gasUsed: 1n,
+  blockNumber: 1n,
+  swapResult: { status: "success", result: undefined, data: "0x", gasUsed: 1n },
+} satisfies SimulationSuccess;
+
+export const simulatedQuoteSuccess = {
+  ...quoteSuccess,
+  simulation: simulationSuccess,
+  performance: {
+    latency: 0,
+    gasUsed: 1n,
+    outputAmount: quoteSuccess.outputAmount,
+    priceDelta: 0,
+    accuracy: 0,
+  },
+} satisfies SuccessfulSimulatedQuote;
 
 export const quoteFailure: Quote = {
   success: false,

@@ -60,13 +60,6 @@ function gasCost(quote: SuccessfulSimulatedQuote): bigint {
   return quote.simulation.gasUsed ?? 0n;
 }
 
-function cancelPendingQuotes(quotes: Array<Promise<SimulatedQuote>>, reason: string): void {
-  const collection = quotes as Array<Promise<SimulatedQuote>> & {
-    cancel?: (reason?: unknown) => void;
-  };
-  collection.cancel?.(new Error(reason));
-}
-
 function assertPositiveInteger(value: number, label: string): void {
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`${label} must be a positive integer`);
@@ -82,11 +75,9 @@ function assertWithinProviderCount(value: number, max: number, label: string): v
 async function collectSuccessfulSimulatedQuotesUntil({
   quotes,
   shouldStop,
-  stopReason,
 }: {
   quotes: Array<Promise<SimulatedQuote>>;
   shouldStop: (quotes: SuccessfulSimulatedQuote[]) => boolean;
-  stopReason: string;
 }): Promise<SuccessfulSimulatedQuote[] | null> {
   const pending = new Set(
     quotes.map(async (quote) => {
@@ -112,7 +103,6 @@ async function collectSuccessfulSimulatedQuotesUntil({
       successfulQuotes.push(next.resolved);
 
       if (shouldStop(successfulQuotes)) {
-        cancelPendingQuotes(quotes, stopReason);
         return successfulQuotes;
       }
     }
@@ -141,7 +131,6 @@ async function collectQuotes(
       return collectSuccessfulSimulatedQuotesUntil({
         quotes,
         shouldStop: (successfulQuotes) => successfulQuotes.length >= collector.count,
-        stopReason: `Collected first ${collector.count} successful quote(s)`,
       });
     }
     case "benchmark": {
@@ -153,7 +142,6 @@ async function collectQuotes(
         shouldStop: (successfulQuotes) =>
           successfulQuotes.length >= minQuotes &&
           successfulQuotes.some((quote) => quote.provider === collector.provider),
-        stopReason: `Collected benchmark provider ${collector.provider}`,
       });
     }
   }
@@ -214,6 +202,7 @@ function toSelectionFn(strategy: QuoteSelectionStrategy): QuoteSelectionFn {
 
 /**
  * Selects a winning quote from a set of simulated quote promises.
+ * Callers own cancellation: abort the preparation controller after selection finishes.
  *
  * @param params - Selection parameters.
  * @param params.strategy - Strategy name or custom selector function.
@@ -227,6 +216,10 @@ export async function selectQuote({
   strategy: QuoteSelectionStrategy;
   quotes: Array<Promise<SimulatedQuote>>;
 }): Promise<SuccessfulSimulatedQuote | null> {
+  // Observe rejections even when a custom selector exits before consuming every quote.
+  for (const quote of quotes) {
+    void quote.catch(() => {});
+  }
   if (quotes.length === 0) {
     throw new Error("No quotes provided to selectQuote");
   }

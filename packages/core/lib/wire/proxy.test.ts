@@ -1,45 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { ok } from "node:assert";
 import type { Address } from "viem";
-import { defaultSwapParams, recordedQuotes, testConfig } from "../../test/utils.js";
+import {
+  defaultSwapParams,
+  quoteSuccess,
+  recordedQuotes,
+  simulatedQuoteSuccess,
+  testConfig,
+} from "../../test/utils.js";
 import { fabric } from "../aggregators/fabric.js";
 import { createConfig } from "../createConfig.js";
 import { getQuote } from "../getQuote.js";
 import { getQuotes } from "../getQuotes.js";
 import { getRawQuotes } from "../getRawQuotes.js";
-import type { Quote, SimulatedQuote, SimulationOptions, SwapParams } from "../types.js";
+import { prepareQuotes } from "../prepareQuotes.js";
+import { prepareSimulatedQuotes } from "../prepareSimulatedQuotes.js";
+import { selectQuote } from "../selectQuote.js";
+import type {
+  Quote,
+  QuoteSelectionStrategy,
+  SimulatedQuote,
+  SimulationOptions,
+  SwapParams,
+} from "../types.js";
 import { proxy } from "./proxy.js";
 import { deserializeWithBigInt } from "./serde.js";
 import { newStream, quoteStreamErrorHandler, simulatedQuoteStreamErrorHandler } from "./streams.js";
 
 function makeSimulatedQuote(outputAmount: bigint): SimulatedQuote {
   return {
-    success: true,
-    provider: "fabric",
-    details: {},
-    latency: 0,
-    inputChainId: 8453,
-    outputChainId: 8453,
-    execution: "atomic",
-    inputAmount: 1_000_000n,
+    ...simulatedQuoteSuccess,
     outputAmount,
-    networkFee: 1n,
-    txData: { to: "0x0000000000000000000000000000000000000001", data: "0x" },
-    simulation: {
-      success: true,
-      outputAmount,
-      swapResult: { status: "success" },
-      latency: 0,
-      gasUsed: 1n,
-      blockNumber: 1n,
-    },
-    performance: {
-      latency: 0,
-      gasUsed: 1n,
-      outputAmount,
-      priceDelta: 0,
-      accuracy: 0,
-    },
-  } as SimulatedQuote;
+    simulation: { ...simulatedQuoteSuccess.simulation, outputAmount },
+    performance: { ...simulatedQuoteSuccess.performance, outputAmount },
+  };
 }
 
 function withDelay<T>(value: T, delayMs: number): Promise<T> {
@@ -55,6 +49,7 @@ describe("proxy", () => {
   let originalFetch: typeof fetch;
   let requests: Request[];
   let responses: Response[];
+  let signals: (AbortSignal | null | undefined)[];
 
   async function enqueue(swap: SwapParams) {
     const quotes = await recordedQuotes("proxy", swap, testConfig([fabric({ appId: "test-app" })]));
@@ -85,11 +80,21 @@ describe("proxy", () => {
     originalFetch = globalThis.fetch;
     requests = [];
     responses = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = new Request(input, init);
-      requests.push(request.clone());
-      return responses.shift() ?? new Response(null, { status: 404 });
-    }) as typeof fetch;
+    signals = [];
+    globalThis.fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const request =
+          typeof input === "string"
+            ? new Request(input, init)
+            : input instanceof URL
+              ? new Request(input.href, init)
+              : new Request(input, init);
+        requests.push(request);
+        signals.push(init?.signal);
+        return responses.shift() ?? new Response(null, { status: 404 });
+      },
+      { preconnect: originalFetch.preconnect },
+    );
   });
 
   afterEach(() => {
@@ -141,18 +146,10 @@ describe("proxy", () => {
     const stream = newStream<Quote>(
       [
         Promise.resolve({
-          success: true,
-          provider: "fabric",
-          details: {},
-          latency: 0,
-          inputChainId: 8453,
+          ...quoteSuccess,
           outputChainId: 10,
-          execution: "atomic",
-          inputAmount: 1_000_000n,
           outputAmount: 10n,
-          networkFee: 1n,
-          txData: { to: "0x0000000000000000000000000000000000000001", data: "0x" },
-        } as Quote),
+        } satisfies Quote),
       ],
       quoteStreamErrorHandler,
     );
@@ -255,22 +252,31 @@ describe("proxy", () => {
 
   it("aborts the remote simulated stream when fastest resolves", async () => {
     let aborted = false;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = new Request(input, init);
-      requests.push(request.clone());
-      init?.signal?.addEventListener("abort", () => {
-        aborted = true;
-      });
-      return new Response(
-        newStream<SimulatedQuote>(
-          [withDelay(makeSimulatedQuote(10n), 20), withDelay(makeSimulatedQuote(9n), 250)],
-          simulatedQuoteStreamErrorHandler,
-        ),
-        {
-          headers: { "Content-Type": "application/octet-stream" },
-        },
-      );
-    }) as typeof fetch;
+    globalThis.fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const request =
+          typeof input === "string"
+            ? new Request(input, init)
+            : input instanceof URL
+              ? new Request(input.href, init)
+              : new Request(input, init);
+        requests.push(request);
+        signals.push(init?.signal);
+        init?.signal?.addEventListener("abort", () => {
+          aborted = true;
+        });
+        return new Response(
+          newStream<SimulatedQuote>(
+            [withDelay(makeSimulatedQuote(10n), 20), withDelay(makeSimulatedQuote(9n), 250)],
+            simulatedQuoteStreamErrorHandler,
+          ),
+          {
+            headers: { "Content-Type": "application/octet-stream" },
+          },
+        );
+      },
+      { preconnect: originalFetch.preconnect },
+    );
 
     const quote = await getQuote({
       config: createConfig({
@@ -284,6 +290,188 @@ describe("proxy", () => {
     await Bun.sleep(50);
     expect(aborted).toBe(true);
   }, 10_000);
+
+  const earlyStrategies: { name: string; strategy: QuoteSelectionStrategy; expected: bigint }[] = [
+    { name: "fastest", strategy: "fastest", expected: 10n },
+    {
+      name: "firstN",
+      strategy: { collect: { type: "firstN", count: 2 }, rank: "bestPrice" },
+      expected: 20n,
+    },
+    {
+      name: "benchmark",
+      strategy: {
+        collect: { type: "benchmark", provider: "fabric", minQuotes: 2 },
+        rank: "bestPrice",
+      },
+      expected: 20n,
+    },
+    { name: "custom", strategy: async () => null, expected: 0n },
+  ];
+
+  it.each(earlyStrategies)("cleans up the proxy after $name selection", async ({
+    strategy,
+    expected,
+  }) => {
+    const stream = newStream<SimulatedQuote>(
+      [
+        Promise.resolve(makeSimulatedQuote(10n)),
+        withDelay(makeSimulatedQuote(20n), 1),
+        new Promise(() => {}),
+      ],
+      simulatedQuoteStreamErrorHandler,
+    );
+    responses.push(new Response(stream));
+    const result = await getQuote({
+      config: createConfig({ proxy: proxy({ pathOrUrl: baseUrl, delegatedActions }) }),
+      swap: defaultSwapParams,
+      strategy,
+    });
+    expect(result?.simulation.outputAmount ?? 0n).toBe(expected);
+    expect(signals[0]?.aborted).toBe(true);
+    await Bun.sleep(0);
+    expect(stream.locked).toBe(false);
+  });
+
+  it("aborts the proxy when a custom selector throws without consuming results", async () => {
+    const stream = newStream<SimulatedQuote>(
+      [new Promise(() => {})],
+      simulatedQuoteStreamErrorHandler,
+    );
+    responses.push(new Response(stream));
+    const reason = new Error("selector failed");
+    await expect(
+      getQuote({
+        config: createConfig({ proxy: proxy({ pathOrUrl: baseUrl, delegatedActions }) }),
+        swap: defaultSwapParams,
+        strategy: async () => {
+          throw reason;
+        },
+      }),
+    ).rejects.toBe(reason);
+    expect(signals[0]?.aborted).toBe(true);
+    await Bun.sleep(0);
+    expect(stream.locked).toBe(false);
+  });
+
+  it("aborts the proxy when selection parameters are invalid", async () => {
+    const stream = newStream<SimulatedQuote>(
+      [new Promise(() => {})],
+      simulatedQuoteStreamErrorHandler,
+    );
+    responses.push(new Response(stream));
+    await expect(
+      getQuote({
+        config: createConfig({ proxy: proxy({ pathOrUrl: baseUrl, delegatedActions }) }),
+        swap: defaultSwapParams,
+        strategy: { collect: { type: "firstN", count: 2 }, rank: "bestPrice" },
+      }),
+    ).rejects.toThrow("cannot exceed the number of providers");
+    expect(signals[0]?.aborted).toBe(true);
+    await Bun.sleep(0);
+    expect(stream.locked).toBe(false);
+  });
+
+  it("aborts and releases the response when preparation fails", async () => {
+    const stream = new ReadableStream<Uint8Array>();
+    responses.push(new Response(stream, { status: 503 }));
+    await expect(
+      getQuote({
+        config: createConfig({ proxy: proxy({ pathOrUrl: baseUrl, delegatedActions }) }),
+        swap: defaultSwapParams,
+        strategy: "fastest",
+      }),
+    ).rejects.toThrow("Proxy request failed with status 503");
+    expect(signals[0]?.aborted).toBe(true);
+    expect(await stream.getReader().read()).toEqual({ value: undefined, done: true });
+  });
+
+  it("passes an external signal to fetch before a stream header arrives", async () => {
+    const stream = new ReadableStream<Uint8Array>();
+    responses.push(new Response(stream));
+    const controller = new AbortController();
+    const reason = new Error("caller stopped before the header");
+    const result = prepareSimulatedQuotes({
+      config: createConfig({ proxy: proxy({ pathOrUrl: baseUrl, delegatedActions }) }),
+      swap: defaultSwapParams,
+      signal: controller.signal,
+    });
+    await Bun.sleep(0);
+    expect(signals[0]).toBe(controller.signal);
+    controller.abort(reason);
+    await expect(result).rejects.toBe(reason);
+    expect(stream.locked).toBe(false);
+  });
+
+  it("lets direct callers select and cancel simulated quotes with their own controller", async () => {
+    const stream = newStream<SimulatedQuote>(
+      [Promise.resolve(makeSimulatedQuote(10n)), new Promise(() => {})],
+      simulatedQuoteStreamErrorHandler,
+    );
+    responses.push(new Response(stream));
+    const controller = new AbortController();
+    const simulationOptions: SimulationOptions = { gasPrice: 123n };
+    const pending = await prepareSimulatedQuotes({
+      config: createConfig({ proxy: proxy({ pathOrUrl: baseUrl, delegatedActions }) }),
+      swap: defaultSwapParams,
+      simulationOptions,
+      signal: controller.signal,
+    });
+    const winner = await selectQuote({ strategy: "fastest", quotes: pending });
+    expect(winner?.simulation.outputAmount).toBe(10n);
+    expect(signals[0]).toBe(controller.signal);
+    expect(controller.signal.aborted).toBe(false);
+    const reason = new Error("caller selected a quote");
+    controller.abort(reason);
+    if (!winner) throw new Error("Expected a selected quote");
+    expect(await pending[0]).toEqual(winner);
+    await expect(pending[1]).rejects.toBe(reason);
+    const request = requests[0];
+    ok(request);
+    const query = new URL(request.url).searchParams;
+    const encodedOptions = query.get("simulationOptions");
+    ok(encodedOptions);
+    expect(deserializeWithBigInt<SimulationOptions>(encodedOptions)).toEqual(simulationOptions);
+    expect(query.has("signal")).toBe(false);
+    expect(stream.locked).toBe(false);
+  });
+
+  it("passes cancellation through raw quote preparation and its map function", async () => {
+    const stream = newStream<Quote>(
+      [Promise.resolve(quoteSuccess), new Promise(() => {})],
+      quoteStreamErrorHandler,
+    );
+    responses.push(new Response(stream));
+    const controller = new AbortController();
+    const pending = await prepareQuotes({
+      config: createConfig({ proxy: proxy({ pathOrUrl: baseUrl, delegatedActions }) }),
+      swap: defaultSwapParams,
+      mapFn: async (quote) => (quote.success ? quote.outputAmount : 0n),
+      signal: controller.signal,
+    });
+    expect(await pending[0]).toBe(quoteSuccess.outputAmount);
+    expect(signals[0]).toBe(controller.signal);
+    const reason = new Error("caller stopped raw quotes");
+    controller.abort(reason);
+    await Bun.sleep(0);
+    await expect(pending[1]).rejects.toBe(reason);
+    const request = requests[0];
+    ok(request);
+    expect(new URL(request.url).searchParams.has("signal")).toBe(false);
+    expect(stream.locked).toBe(false);
+  });
+
+  it("rejects a pre-aborted preparation without sending a proxy request", async () => {
+    const signal = AbortSignal.abort(new Error("already stopped"));
+    const config = createConfig({ proxy: proxy({ pathOrUrl: baseUrl, delegatedActions }) });
+    await expect(prepareSimulatedQuotes({ config, swap: defaultSwapParams, signal })).rejects.toBe(
+      signal.reason,
+    );
+    await expect(
+      prepareQuotes({ config, swap: defaultSwapParams, signal, mapFn: async (quote) => quote }),
+    ).rejects.toBe(signal.reason);
+    expect(requests).toEqual([]);
+  });
 });
 
 describe("proxy delegatedActions config", () => {

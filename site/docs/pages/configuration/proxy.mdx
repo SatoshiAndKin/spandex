@@ -121,3 +121,16 @@ does not preserve bigint balances.
 result can be yielded as soon as it is ready.
 
 This is what enables progressive quote rendering instead of waiting for all providers to finish.
+
+## Cancel a client stream
+
+`getQuote` stops its proxy fetch and stream after selection finishes or fails.
+
+Direct callers can pass an `AbortSignal` to `prepareQuotes({ config, swap, mapFn, signal })`
+or `prepareSimulatedQuotes({ config, swap, simulationOptions, signal })`.
+For calls on `AggregatorProxy`, use `proxy.prepareQuotes(swap, signal)` or
+`proxy.prepareSimulatedQuotes(swap, simulationOptions, signal)`.
+The signal controls the client request. It is separate from serialized swap and simulation options.
+
+Use the [controller ownership example](/core/functions/selectQuote) to release the stream
+in `finally`. Aborting this stream does not guarantee that server-side provider or RPC work stops.

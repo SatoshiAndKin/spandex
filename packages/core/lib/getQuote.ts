@@ -11,6 +11,7 @@ import type {
 
 /**
  * Fetches quotes, simulates them, and selects a winner using the provided strategy.
+ * Owns and aborts the proxy stream controller after selection succeeds or fails.
  *
  * @param params - Request parameters.
  * @param params.config - Meta-aggregator configuration and providers.
@@ -33,14 +34,17 @@ export async function getQuote({
   client?: PublicClient;
   simulationOptions?: SimulationOptions;
 }): Promise<SuccessfulSimulatedQuote | null> {
-  const quotes = await prepareSimulatedQuotes({
-    config,
-    swap,
-    client,
-    simulationOptions,
-  });
-  return selectQuote({
-    strategy,
-    quotes,
-  });
+  const controller = new AbortController();
+  try {
+    const quotes = await prepareSimulatedQuotes({
+      config,
+      swap,
+      client,
+      simulationOptions,
+      signal: controller.signal,
+    });
+    return await selectQuote({ strategy, quotes });
+  } finally {
+    controller.abort();
+  }
 }
