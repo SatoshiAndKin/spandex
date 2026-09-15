@@ -31,7 +31,7 @@ const promises = await prepareQuotes({
 ```
 
 ```ts [config.ts] filename="config.ts" twoslash
-import { createConfig, fabric, odos } from "@spandex/core";
+import { createConfig, fabric, kyberswap } from "@spandex/core";
 import { createPublicClient, http, type PublicClient } from "viem";
 import { base } from "viem/chains";
 
@@ -41,7 +41,7 @@ const client = createPublicClient({
 });
 
 export const config = createConfig({
-  providers: [fabric({ appId: "your app id" }), odos({})],
+  providers: [fabric({ appId: "your app id" }), kyberswap({ clientId: "your client id" })],
   clients: [client] as PublicClient[],
 });
 ```
@@ -66,8 +66,18 @@ Parameters defining the swap operation. See [SwapParams reference](/reference/Sw
 Function that maps each fetched quote to a promise of type `T`. This allows for custom processing of each quote, such as simulation or other enrichment. Identity function is also valid.
 
 
+### signal
+`AbortSignal | undefined`
+
+Optional signal for the proxy request and stream decoder. Keep it separate from `swap`
+and simulation options. A pre-aborted signal rejects preparation before it sends a request.
+For local providers, this signal does not stop provider requests or simulations already in progress.
+
+The caller owns the controller. After selection, call `abort()` in a `finally` block.
+See the [selection example](./selectQuote.mdx).
+
 ## Returns
 
-`Array<Promise<T>>`
+`Promise<Array<Promise<T>>>`
 
 List of promises, each resolving to type `T` as defined by the `mapFn`.

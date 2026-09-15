@@ -7,22 +7,35 @@ Pick the best simulated quote from a set of in-flight quote+simulation promises.
 :::code-group
 
 ```ts [selectQuote]
-import { prepareQuotes, selectQuote, simulateQuote } from "@spandex/core";
+import { prepareSimulatedQuotes, selectQuote } from "@spandex/core";
 import { config, client, swap } from "./config.ts";
 
-const quotes = await prepareQuotes({
-  config,
-  swap,
-  mapFn: (quote) => simulateQuote({ quote, swap, client }),
-});
-
-const quote = await selectQuote({
-  quotes,
-  strategy: "bestPrice",
-});
+const controller = new AbortController();
+try {
+  const quotes = await prepareSimulatedQuotes({
+    config,
+    swap,
+    client,
+    signal: controller.signal,
+  });
+  const quote = await selectQuote({ quotes, strategy: "fastest" });
+  console.log(quote?.provider);
+} finally {
+  controller.abort();
+}
 ```
 
 :::
+
+## Cancellation
+
+`selectQuote` selects from a plain promise array. The caller owns cancellation.
+Pass a controller signal to `prepareQuotes` or `prepareSimulatedQuotes`, then abort it
+in `finally` after selection. Use [`getQuote`](./getQuote.mdx) to let the library own
+this controller and cleanup.
+
+An early selection leaves the remaining promises available until the caller aborts.
+Aborting a proxy stream does not guarantee cancellation of server-side provider or RPC work.
 
 ## Params
 

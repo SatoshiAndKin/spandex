@@ -33,31 +33,34 @@ describe("Relay", () => {
   it("passes the api key header when configured", async () => {
     const originalFetch = globalThis.fetch;
     let requestHeaders: Headers | undefined;
-    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requestHeaders = new Headers(init?.headers);
-      return new Response(
-        JSON.stringify({
-          steps: [
-            {
-              id: "swap",
-              items: [
-                {
-                  data: {
-                    to: "0x0000000000000000000000000000000000000001",
-                    data: "0x",
-                    value: "0",
+    globalThis.fetch = Object.assign(
+      async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        requestHeaders = new Headers(init?.headers);
+        return new Response(
+          JSON.stringify({
+            steps: [
+              {
+                id: "swap",
+                items: [
+                  {
+                    data: {
+                      to: "0x0000000000000000000000000000000000000001",
+                      data: "0x",
+                      value: "0",
+                    },
                   },
-                },
-              ],
+                ],
+              },
+            ],
+            details: {
+              currencyIn: { amount: defaultSwapParams.inputAmount.toString() },
+              currencyOut: { amount: "900000" },
             },
-          ],
-          details: {
-            currencyIn: { amount: defaultSwapParams.inputAmount.toString() },
-            currencyOut: { amount: "900000" },
-          },
-        }),
-      );
-    }) as typeof fetch;
+          }),
+        );
+      },
+      { preconnect: originalFetch.preconnect },
+    );
 
     try {
       await relay({ apiKey: "relay-test-key" }).fetchQuote(defaultSwapParams);

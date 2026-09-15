@@ -34,8 +34,12 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
       - name: Build packages
         run: bun run build
+      - name: Typecheck source, tests, and public imports
+        run: bun run typecheck
       - name: Run tests
-        run: bun test
+        run: |
+          test -n "$RPC_URL_8453" || { echo "::error::RPC_URL_8453 is required"; exit 1; }
+          bun test
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
-          ANKR_API_KEY: ${{ secrets.ANKR_API_KEY }}
+          RPC_URL_8453: ${{ secrets.RPC_URL_8453 }}

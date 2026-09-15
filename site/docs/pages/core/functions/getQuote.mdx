@@ -32,7 +32,7 @@ console.log(quote.provider, quote.simulation.outputAmount);
 ```
 
 ```ts [config] filename="config.ts" twoslash
-import { createConfig, fabric, odos } from "@spandex/core";
+import { createConfig, fabric, kyberswap } from "@spandex/core";
 import { createPublicClient, http, type PublicClient } from "viem";
 import { base } from "viem/chains";
 
@@ -42,7 +42,7 @@ const client = createPublicClient({
 });
 
 export const config = createConfig({
-  providers: [fabric({ appId: "your app id" }), odos({})],
+  providers: [fabric({ appId: "your app id" }), kyberswap({ clientId: "your client id" })],
   clients: [client] as PublicClient[],
 });
 ```
@@ -89,10 +89,21 @@ type QuoteSelectionFn = (
 
 Optional custom PublicClient to use for onchain simulations. If not provided, the configured clients in the `config` will be used.
 
-### simulate
-`typeof simulateQuote | undefined`
+### simulationOptions
+`SimulationOptions | undefined`
 
-Optional override for the simulation function used on each quote.
+Optional simulation controls. Use `stateOverrides` to provide viem account or storage overrides for
+indicative quotes where the swapper does not have the required onchain balance. Caller-provided
+values take precedence over spanDEX's built-in native-balance override.
+
+## Cancellation
+
+`getQuote` owns an `AbortController` for proxy requests. It aborts the remaining stream
+when selection returns a quote, returns `null`, or throws. This includes `fastest`,
+`firstN`, benchmark, and custom selection strategies.
+
+Aborting a proxy stream does not guarantee cancellation of server-side provider or RPC work.
+For direct preparation and selection, [use your own controller](./selectQuote.mdx).
 
 ## Returns
 

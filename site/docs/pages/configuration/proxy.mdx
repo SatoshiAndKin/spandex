@@ -44,7 +44,8 @@ simulation infrastructure to the server.
 ## How It Works
 
 1. Client calls quote APIs/hooks (`getQuotes`, `getQuote`, `getRawQuotes`, `useQuotes`, etc).
-2. `AggregatorProxy` serializes swap params into query params and calls your endpoint.
+2. `AggregatorProxy` serializes swap params into query params and calls your endpoint. Optional
+   simulation controls are encoded with bigint support in the `simulationOptions` query parameter.
 3. `prepareQuotes` uses a streaming response (`newStream(...)`) so quotes arrive progressively.
 4. `prepareSimulatedQuotes` uses a streaming response (`newStream(...)`) so simulated
    quotes arrive progressively.
@@ -66,20 +67,21 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
 import {
+  deserializeWithBigInt,
   newStream,
   prepareQuotes,
   prepareSimulatedQuotes,
   quoteStreamErrorHandler,
   simulatedQuoteStreamErrorHandler,
   type Quote,
+  type SimulationOptions,
   type SimulatedQuote,
-  type SwapParams,
 } from "@spandex/core";
 
 const app = new Hono();
 
 app.get("/prepareQuotes", zValidator("query", querySchema), async (c) => {
-  const swap = c.req.valid("query") satisfies SwapParams;
+  const { simulationOptions: _, ...swap } = c.req.valid("query");
   return stream(c, async (streamWriter) => {
     const prepared = await prepareQuotes<Quote>({
       swap,
@@ -91,11 +93,15 @@ app.get("/prepareQuotes", zValidator("query", querySchema), async (c) => {
 });
 
 app.get("/prepareSimulatedQuotes", zValidator("query", querySchema), async (c) => {
-  const swap = c.req.valid("query") satisfies SwapParams;
+  const { simulationOptions: encodedSimulationOptions, ...swap } = c.req.valid("query");
+  const simulationOptions = encodedSimulationOptions
+    ? deserializeWithBigInt<SimulationOptions>(encodedSimulationOptions)
+    : undefined;
   return stream(c, async (streamWriter) => {
     const prepared = await prepareSimulatedQuotes({
       swap,
       config,
+      simulationOptions,
     });
     await streamWriter.pipe(
       newStream<SimulatedQuote>(prepared, simulatedQuoteStreamErrorHandler),
@@ -104,6 +110,10 @@ app.get("/prepareSimulatedQuotes", zValidator("query", querySchema), async (c) =
 });
 ```
 
+The endpoint's query schema must accept `simulationOptions` as an optional string. Deserialize it
+with `deserializeWithBigInt` before passing it to `prepareSimulatedQuotes`; ordinary JSON parsing
+does not preserve bigint balances.
+
 ## React Streaming and Async Iterators
 
 `useQuotes` defaults to streamed results (`streamResults: true`) and uses TanStack
@@ -111,3 +121,16 @@ app.get("/prepareSimulatedQuotes", zValidator("query", querySchema), async (c) =
 result can be yielded as soon as it is ready.
 
 This is what enables progressive quote rendering instead of waiting for all providers to finish.
+
+## Cancel a client stream
+
+`getQuote` stops its proxy fetch and stream after selection finishes or fails.
+
+Direct callers can pass an `AbortSignal` to `prepareQuotes({ config, swap, mapFn, signal })`
+or `prepareSimulatedQuotes({ config, swap, simulationOptions, signal })`.
+For calls on `AggregatorProxy`, use `proxy.prepareQuotes(swap, signal)` or
+`proxy.prepareSimulatedQuotes(swap, simulationOptions, signal)`.
+The signal controls the client request. It is separate from serialized swap and simulation options.
+
+Use the [controller ownership example](/core/functions/selectQuote) to release the stream
+in `finally`. Aborting this stream does not guarantee that server-side provider or RPC work stops.

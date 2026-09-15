@@ -1,4 +1,4 @@
-import type { Address, Block, PublicClient, SimulateCallsReturnType } from "viem";
+import type { Address, Block, PublicClient, SimulateCallsReturnType, StateOverride } from "viem";
 import { encodeFunctionData, erc20Abi, parseEther } from "viem";
 import { simulateCalls } from "viem/actions";
 import type {
@@ -67,18 +67,20 @@ export class SimulationRevertError extends Error {
  * @param args.swap - Swap parameters shared across all quotes.
  * @param args.client - Public client used to perform the simulations.
  * @param args.quotes - Quotes that should be simulated.
+ * @param args.simulationOptions - Optional simulation controls, including state overrides.
  * @returns Quotes decorated with their simulation results.
  */
 export async function simulateQuotes(
   args: Omit<SimulationArgs, "quote"> & { quotes: Quote[] },
 ): Promise<SimulatedQuote[]> {
-  const { swap, client, quotes } = args;
+  const { swap, client, quotes, simulationOptions } = args;
   return Promise.all(
     quotes.map(async (quote: Quote) => {
       return simulateQuote({
         client,
         swap,
         quote,
+        simulationOptions,
       });
     }),
   );
@@ -91,6 +93,7 @@ export async function simulateQuotes(
  * @param args.client - Client used to issue the simulation.
  * @param args.swap - Swap parameters attached to the quote.
  * @param args.quote - Quote instance to simulate.
+ * @param args.simulationOptions - Optional simulation controls, including state overrides.
  * @returns Quote data merged with its simulation result.
  */
 export async function simulateQuote(args: SimulationArgs): Promise<SimulatedQuote> {
@@ -112,6 +115,7 @@ async function performSimulation({
   client,
   swap,
   quote,
+  simulationOptions,
 }: SimulationArgs): Promise<SimulationResult> {
   if (!quote.success) {
     return {
@@ -124,7 +128,8 @@ async function performSimulation({
     const recipientAccount = swap.recipientAccount ?? swap.swapperAccount;
     const approvalToken = quote.approval?.token ?? swap.inputToken;
     const approvalSpender = quote.approval?.spender ?? quote.txData.to;
-    const calls: TxData[] = [];
+    const gasPrice = simulationOptions?.gasPrice ?? (await client.getGasPrice());
+    const calls: Array<TxData & { gasPrice?: bigint }> = [];
 
     // Build calls in a stable order: optional approve, recipient balance before, swap, recipient balance after.
     if (!isNativeToken(swap.inputToken)) {
@@ -145,19 +150,17 @@ async function performSimulation({
       holderAddress: recipientAccount,
     });
     calls.push(balanceCall);
-    calls.push(quote.txData);
+    calls.push({ ...quote.txData, gasPrice });
     calls.push(balanceCall);
 
     const time = performance.now();
     const { results, block } = await simulateCalls(client, {
       account: swap.swapperAccount,
       calls,
-      stateOverrides: [
-        {
-          address: swap.swapperAccount,
-          balance: parseEther("10000"), // large amount to cover gas costs + swap value
-        },
-      ],
+      stateOverrides: simulationStateOverrides(
+        swap.swapperAccount,
+        simulationOptions?.stateOverrides,
+      ),
     });
     const latency = performance.now() - time;
 
@@ -168,10 +171,18 @@ async function performSimulation({
     const [beforeBalanceResult, swapResult, afterBalanceResult] = results.slice(-3);
 
     // Extract the output amount from the balance deltas and validate it
-    const outputAmount = extractOutputAmountFromBalances({
+    let outputAmount = extractOutputAmountFromBalances({
       beforeBalanceResult: beforeBalanceResult as SimulateCallsReturnType["results"][0],
       afterBalanceResult: afterBalanceResult as SimulateCallsReturnType["results"][0],
     });
+    // Balance probes have zero fees. Restore the swap fee only when the payer
+    // also receives native output, so output remains gross of execution costs.
+    if (
+      isNativeToken(swap.outputToken) &&
+      recipientAccount.toLowerCase() === swap.swapperAccount.toLowerCase()
+    ) {
+      outputAmount += (swapResult?.gasUsed ?? 0n) * gasPrice;
+    }
     validateOutputAmount(outputAmount);
 
     return {
@@ -202,6 +213,7 @@ async function performCrossChainSimulation({
   client,
   swap,
   quote,
+  simulationOptions,
 }: SimulationArgs): Promise<SimulationResult> {
   if (!quote.success) {
     return {
@@ -213,7 +225,8 @@ async function performCrossChainSimulation({
   try {
     const approvalToken = quote.approval?.token ?? swap.inputToken;
     const approvalSpender = quote.approval?.spender ?? quote.txData.to;
-    const calls: TxData[] = [];
+    const gasPrice = simulationOptions?.gasPrice ?? (await client.getGasPrice());
+    const calls: Array<TxData & { gasPrice?: bigint }> = [];
 
     if (!isNativeToken(swap.inputToken)) {
       calls.push({
@@ -225,19 +238,18 @@ async function performCrossChainSimulation({
         }),
       });
     }
-    calls.push(quote.txData);
+    calls.push({ ...quote.txData, gasPrice });
     const time = performance.now();
     const { results, block } = await simulateCalls(client, {
       account: swap.swapperAccount,
       calls,
-      stateOverrides: [
-        {
-          address: swap.swapperAccount,
-          balance: parseEther("10000"), // large amount to cover gas costs + swap value
-        },
-      ],
+      stateOverrides: simulationStateOverrides(
+        swap.swapperAccount,
+        simulationOptions?.stateOverrides,
+      ),
     });
     const latency = performance.now() - time;
+    validateSimulation(results, calls, block);
     const swapResult = results[results.length - 1];
     const approvalResult = results.length > 1 ? results[0] : undefined;
     return {
@@ -262,6 +274,88 @@ async function performCrossChainSimulation({
 }
 
 /// Utils ///
+
+function simulationStateOverrides(
+  swapperAccount: Address,
+  stateOverrides?: StateOverride,
+): StateOverride {
+  return mergeSimulationStateOverrides(
+    [
+      {
+        address: swapperAccount,
+        balance: parseEther("10000"), // large amount to cover gas costs + swap value
+      },
+    ],
+    stateOverrides,
+  );
+}
+
+export function mergeSimulationStateOverrides(
+  base: StateOverride,
+  extra?: StateOverride,
+): StateOverride {
+  if (!extra || extra.length === 0) {
+    return base;
+  }
+
+  const merged = new Map<string, StateOverride[number]>();
+  for (const item of [...base, ...extra]) {
+    const key = item.address.toLowerCase();
+    const existing = merged.get(key);
+    merged.set(key, existing ? mergeAccountOverride(existing, item) : item);
+  }
+  return [...merged.values()];
+}
+
+function mergeAccountOverride(
+  existing: StateOverride[number],
+  incoming: StateOverride[number],
+): StateOverride[number] {
+  const merged = {
+    ...existing,
+    ...incoming,
+  } as StateOverride[number] & {
+    state?: StateOverride[number]["state"];
+    stateDiff?: StateOverride[number]["stateDiff"];
+  };
+
+  if ("state" in incoming && incoming.state !== undefined) {
+    merged.state = incoming.state;
+    delete merged.stateDiff;
+    return merged;
+  }
+
+  if ("stateDiff" in incoming && incoming.stateDiff !== undefined) {
+    const current = "stateDiff" in existing ? existing.stateDiff : undefined;
+    merged.stateDiff = mergeStateMappings(current, incoming.stateDiff);
+    delete merged.state;
+    return merged;
+  }
+
+  if ("state" in existing && existing.state !== undefined) {
+    merged.state = existing.state;
+    delete merged.stateDiff;
+  } else if ("stateDiff" in existing && existing.stateDiff !== undefined) {
+    merged.stateDiff = existing.stateDiff;
+    delete merged.state;
+  }
+
+  return merged;
+}
+
+function mergeStateMappings(
+  current?: StateOverride[number]["stateDiff"],
+  incoming?: StateOverride[number]["stateDiff"],
+): NonNullable<StateOverride[number]["stateDiff"]> {
+  const merged = new Map<string, NonNullable<StateOverride[number]["stateDiff"]>[number]>();
+  for (const mapping of current ?? []) {
+    merged.set(mapping.slot.toLowerCase(), mapping);
+  }
+  for (const mapping of incoming ?? []) {
+    merged.set(mapping.slot.toLowerCase(), mapping);
+  }
+  return [...merged.values()];
+}
 
 function buildBalanceCall({
   client,

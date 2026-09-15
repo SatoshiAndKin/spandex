@@ -1,20 +1,15 @@
 import { describe, expect, it } from "bun:test";
+import { quoteSuccess } from "../test/utils.js";
 import { getPricing } from "./getPricing.js";
 import type { SuccessfulQuote } from "./types.js";
 
-const baseQuote: SuccessfulQuote = {
-  success: true,
-  provider: "fabric",
-  details: {} as never,
+const baseQuote = {
+  ...quoteSuccess,
   latency: 1,
   inputAmount: 1_000_000n,
   outputAmount: 2_000_000_000_000_000_000n,
   networkFee: 0n,
-  txData: {
-    to: "0x0000000000000000000000000000000000000001",
-    data: "0xdeadbeef",
-  },
-};
+} satisfies SuccessfulQuote;
 
 describe("getPricing", () => {
   it("averages usd prices across quotes", () => {
@@ -38,6 +33,20 @@ describe("getPricing", () => {
     const quoteB: SuccessfulQuote = {
       ...baseQuote,
       provider: "kyberswap",
+      details: {
+        inputAmount: baseQuote.inputAmount.toString(),
+        outputAmount: baseQuote.outputAmount.toString(),
+        totalGas: 0,
+        gasPriceGwei: "0",
+        gasUsd: 0,
+        amountInUsd: 4,
+        amountOutUsd: 12,
+        receivedUsd: 12,
+        swaps: [],
+        tokens: {},
+        encodedSwapData: "0x",
+        routerAddress: "0x0000000000000000000000000000000000000001",
+      },
       pricing: {
         inputToken: {
           address: "0x00000000000000000000000000000000000000aa",

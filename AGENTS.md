@@ -11,10 +11,11 @@
 - `bun install`: install workspace dependencies.
 - `bun run build`: build all workspace packages via `scripts/build-packages.ts`.
 - `bun ./scripts/build-packages.ts core`: build a single workspace by name/path.
+- `bun run typecheck`: check package source, tests, and public imports after package builds.
 - `bun run pack`: create tarballs for `packages/core` and `packages/react`.
 - `bun run lint`: run Biome formatting + lint checks.
 - `bun run lint:fix`: apply Biome fixes across the repo.
-- `bun test`: run the Bun test runner (uses `bunfig.toml` coverage settings).
+- `bun test`: run the Bun test runner (uses `bunfig.toml` coverage settings). Set `RPC_URL_8453` to a Base RPC URL with archive state and `eth_simulateV1` support for live tests and Anvil forks. Tests use the public Base RPC when this setting is absent.
 - `bun --cwd site run dev`: start the documentation site locally.
 
 ## Coding Style & Naming Conventions
