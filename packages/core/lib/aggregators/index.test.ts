@@ -6,13 +6,13 @@ import { deadline } from "./index.js";
 describe("aggregator", () => {
   it("provides basic data", async () => {
     const mock = new MockAggregator(quoteFailure);
-    expect(mock.name()).toBe("fabric");
+    expect(mock.name()).toBe("nordstern");
     expect(mock.features()).toEqual(["exactIn"]);
     expect(mock.attributes?.mock).toBe(true);
   }, 1000);
 
   it("triggers a deadline", async () => {
-    const error = await deadline({ deadlineMs: 5, aggregator: "fabric" });
+    const error = await deadline({ deadlineMs: 5, aggregator: "nordstern" });
     expect(error).toBeDefined();
     expect(error.success).toBe(false);
     expect((error as FailedQuote).error?.message).toMatch(/Aggregator deadline exceeded/);
@@ -45,6 +45,8 @@ describe("aggregator", () => {
     expect(mock.count).toBe(1); // Retry should be skipped due to deadline
     expect(quote.success).toBe(false);
     expect((quote as FailedQuote).error?.message).toMatch(/Aggregator deadline exceeded/);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(mock.count).toBe(1); // The late failure must not restart work after the deadline.
   }, 500);
 
   it("clears the deadline timer when the quote resolves first", async () => {

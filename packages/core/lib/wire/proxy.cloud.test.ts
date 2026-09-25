@@ -46,7 +46,7 @@ describe("spandexCloud", () => {
     const quotes = await Promise.all(await cloud.prepareQuotes(usdcBalanceSwap));
 
     expect(quotes).toHaveLength(1);
-    expect(quotes[0]?.provider).toBe("fabric");
+    expect(quotes[0]?.provider).toBe("nordstern");
     expect(new URL(requests[0]?.url || "").pathname).toBe("/api/v1/prepareQuotes");
     expect(requests[0]?.headers.get("X-Api-Key")).toBe("testing");
   });

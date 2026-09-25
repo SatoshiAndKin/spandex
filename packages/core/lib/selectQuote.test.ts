@@ -12,7 +12,7 @@ const quoteSuccess = simulatedQuoteSuccess;
 
 const quoteFailure: SimulatedQuote = {
   success: false,
-  provider: "fabric",
+  provider: "nordstern",
   error: new Error("Failed to get quote"),
   simulation: {
     success: false,
@@ -138,7 +138,7 @@ describe("selectQuote", () => {
   it("custom selection composes benchmark with bestPrice", async () => {
     const pending = [
       withDelay(makeSuccessfulQuote({ provider: "odos", outputAmount: 14n }), 20),
-      withDelay(makeSuccessfulQuote({ provider: "fabric", outputAmount: 11n }), 50),
+      withDelay(makeSuccessfulQuote({ provider: "nordstern", outputAmount: 11n }), 50),
       withDelay(makeSuccessfulQuote({ provider: "relay", outputAmount: 30n }), 200),
     ];
 
@@ -146,7 +146,7 @@ describe("selectQuote", () => {
       strategy: {
         collect: {
           type: "benchmark",
-          provider: "fabric",
+          provider: "nordstern",
           minQuotes: 2,
         },
         rank: "bestPrice",
@@ -162,7 +162,7 @@ describe("selectQuote", () => {
   it("supports a custom collect function inside a strategy plan", async () => {
     const pending = [
       withDelay(makeSuccessfulQuote({ provider: "odos", outputAmount: 12n }), 20),
-      withDelay(makeSuccessfulQuote({ provider: "fabric", outputAmount: 18n }), 40),
+      withDelay(makeSuccessfulQuote({ provider: "nordstern", outputAmount: 18n }), 40),
       withDelay(makeSuccessfulQuote({ provider: "relay", outputAmount: 30n }), 200),
     ];
 
@@ -183,7 +183,7 @@ describe("selectQuote", () => {
     });
 
     expect(output).toBeDefined();
-    expect(output?.provider).toBe("fabric");
+    expect(output?.provider).toBe("nordstern");
     expect(output?.simulation.outputAmount).toBe(18n);
   }, 1_000);
 
@@ -191,7 +191,7 @@ describe("selectQuote", () => {
     const pending = [
       Promise.resolve(
         makeSuccessfulQuote({
-          provider: "fabric",
+          provider: "nordstern",
           outputAmount: 1_000n,
           simulation: { ...quoteSuccess.simulation, outputAmount: 1_000n },
         }),
@@ -215,7 +215,7 @@ describe("selectQuote", () => {
 
     expect(output).toBeDefined();
     if (!output) throw new Error("Expected a selected quote");
-    expect(["fabric", "odos"]).toContain(output.provider);
+    expect(["nordstern", "odos"]).toContain(output.provider);
   });
 
   it("price selection - best simulated output relative to input is chosen", async () => {
@@ -374,7 +374,7 @@ describe("selectQuote", () => {
       strategy: {
         collect: {
           type: "benchmark",
-          provider: "fabric",
+          provider: "nordstern",
           minQuotes: 2,
         },
         rank: "bestPrice",
@@ -407,7 +407,7 @@ describe("selectQuote", () => {
     await expect(
       selectQuote({
         strategy: {
-          collect: { type: "benchmark", provider: "fabric", minQuotes: 0 },
+          collect: { type: "benchmark", provider: "nordstern", minQuotes: 0 },
           rank: "bestPrice",
         },
         quotes: [Promise.resolve(quoteSuccess)],

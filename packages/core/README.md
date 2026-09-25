@@ -46,3 +46,25 @@ specified in basis points, including zero, and is passed to Curve's calldata
 builder as percent. `targetOut` estimates the required exact-input trade; its
 quote reports the route's output. ERC-20 quotes include the allowance identity;
 check current allowance before approval or execution.
+
+On Node, `curve()` and `new CurveAggregator()` run Curve initialization and route
+computation in an SDK-owned worker. Applications need no worker entry file or
+TypeScript loader. The package contains compiled ESM and CommonJS workers; browser
+bundles keep the local Curve implementation and exclude Node worker imports.
+
+The shared worker transport correlates concurrent requests and preserves bigint
+results and nested error names, messages, codes, causes, and details. Provider
+`timeoutMs` and aggregation deadlines cancel pending requests and stop retries.
+When the last pending request is cancelled, the worker is terminated; crashes
+reject every pending request. The next request restarts it. Idle workers do not
+keep Node alive and are terminated after 60 seconds (discarding their Curve cache).
+A deadline cancels only its caller while other requests remain active.
+
+Errors retain diagnostics across the worker boundary. Applications should redact
+credentials when logging or returning those diagnostics to users.
+
+After building, run `node packages/core/test/verify-curve-worker.mts` with
+`RPC_URL_1` (Ethereum USDC → crvUSD) or `RPC_URL_8453` (Base USDC → WETH).
+It requires a successful cold Curve quote while continuously probing a network
+provider with a 500ms deadline. SDK QA runs this in Docker with 2 CPUs and 512 MiB
+of memory and swap disabled.

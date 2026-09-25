@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { defaultSwapParams, simulatedQuoteSuccess, testConfig } from "../../test/utils.js";
-import { fabric } from "../aggregators/fabric.js";
+import { nordstern } from "../aggregators/nordstern.js";
 import { relay } from "../aggregators/relay.js";
 import { prepareQuotes } from "../prepareQuotes.js";
 import type { Quote, SimulatedQuote } from "../types.js";
@@ -17,7 +17,7 @@ describe("streaming", () => {
   it("properly streams serialized quotes", async () => {
     const quotes = await prepareQuotes({
       swap: defaultSwapParams,
-      config: testConfig([fabric({ appId: "test-fabric-key" }), relay({})]),
+      config: testConfig([nordstern({}), relay({})]),
       mapFn: async (quote) => {
         return quote;
       },
@@ -27,7 +27,7 @@ describe("streaming", () => {
     const decodedPromises = await decodeStream<Quote>(stream);
     const decoded = await Promise.all(decodedPromises);
     expect(decoded.length).toBe(quotes.length);
-    expect(decoded.find((q) => q.provider === "fabric")).toBeDefined();
+    expect(decoded.find((q) => q.provider === "nordstern")).toBeDefined();
     expect(decoded.find((q) => q.provider === "relay")).toBeDefined();
     expect(decoded.every((q) => typeof q.success === "boolean")).toBe(true);
   }, 10_000);
@@ -51,6 +51,6 @@ describe("streaming", () => {
     const decodedPromises = await decodeStream<SimulatedQuote>(stream);
     const decoded = await Promise.all(decodedPromises);
     expect(decoded).toHaveLength(1);
-    expect(decoded[0]?.provider).toBe("fabric");
+    expect(decoded[0]?.provider).toBe("nordstern");
   });
 });

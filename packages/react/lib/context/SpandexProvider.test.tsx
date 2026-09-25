@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { fabric, zeroX } from "@spandex/core";
+import { nordstern, zeroX } from "@spandex/core";
 import { createClient, http } from "viem";
 import { base } from "viem/chains";
 import { render, screen } from "../../test/utils.js";
@@ -18,17 +18,21 @@ function ClientProbe({ chainId }: { chainId: number }) {
 
 describe("SpandexProvider", () => {
   beforeEach(() => {
-    const client = createClient({ chain: base, transport: http() });
+    // Other hook tests replace wagmi exports; reset the client for every test.
+    // Use a bare client so this suite actually verifies publicActions decoration.
+    const client = createClient({ chain: base, transport: http("https://base.drpc.org") });
     mock.module("wagmi", () => ({
+      useConfig: () => ({
+        getClient: ({ chainId }: { chainId: number }) => (chainId === base.id ? client : undefined),
+      }),
       useConnection: () => ({ address: undefined, chain: undefined }),
-      useConfig: () => ({ getClient: () => client }),
     }));
   });
 
   it("should provide metaAggregator to children", () => {
     render(<TestComponent />, {
       spandexConfig: {
-        providers: [zeroX({ apiKey: "test" }), fabric({ appId: "test" })],
+        providers: [zeroX({ apiKey: "test" }), nordstern({})],
       },
     });
 
@@ -41,7 +45,7 @@ describe("SpandexProvider", () => {
   it("should provide public clients with decorated actions", () => {
     render(<ClientProbe chainId={8453} />, {
       spandexConfig: {
-        providers: [fabric({ appId: "test" })],
+        providers: [nordstern({})],
       },
     });
 

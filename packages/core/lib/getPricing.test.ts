@@ -15,7 +15,7 @@ describe("getPricing", () => {
   it("averages usd prices across quotes", () => {
     const quoteA: SuccessfulQuote = {
       ...baseQuote,
-      provider: "fabric",
+      provider: "nordstern",
       pricing: {
         inputToken: {
           address: "0x00000000000000000000000000000000000000aa",
@@ -65,6 +65,6 @@ describe("getPricing", () => {
 
     expect(summary.inputToken?.usdPrice).toBeCloseTo(3);
     expect(summary.outputToken?.usdPrice).toBeCloseTo(5.5);
-    expect(summary.sources.sort()).toEqual(["fabric", "kyberswap"]);
+    expect(summary.sources.sort()).toEqual(["kyberswap", "nordstern"]);
   });
 });

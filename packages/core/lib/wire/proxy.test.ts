@@ -1,14 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { ok } from "node:assert";
 import type { Address } from "viem";
-import {
-  defaultSwapParams,
-  quoteSuccess,
-  recordedQuotes,
-  simulatedQuoteSuccess,
-  testConfig,
-} from "../../test/utils.js";
-import { fabric } from "../aggregators/fabric.js";
+import { defaultSwapParams, quoteSuccess, simulatedQuoteSuccess } from "../../test/utils.js";
 import { createConfig } from "../createConfig.js";
 import { getQuote } from "../getQuote.js";
 import { getQuotes } from "../getQuotes.js";
@@ -16,13 +9,7 @@ import { getRawQuotes } from "../getRawQuotes.js";
 import { prepareQuotes } from "../prepareQuotes.js";
 import { prepareSimulatedQuotes } from "../prepareSimulatedQuotes.js";
 import { selectQuote } from "../selectQuote.js";
-import type {
-  Quote,
-  QuoteSelectionStrategy,
-  SimulatedQuote,
-  SimulationOptions,
-  SwapParams,
-} from "../types.js";
+import type { Quote, QuoteSelectionStrategy, SimulatedQuote, SimulationOptions } from "../types.js";
 import { proxy } from "./proxy.js";
 import { deserializeWithBigInt } from "./serde.js";
 import { newStream, quoteStreamErrorHandler, simulatedQuoteStreamErrorHandler } from "./streams.js";
@@ -51,8 +38,8 @@ describe("proxy", () => {
   let responses: Response[];
   let signals: (AbortSignal | null | undefined)[];
 
-  async function enqueue(swap: SwapParams) {
-    const quotes = await recordedQuotes("proxy", swap, testConfig([fabric({ appId: "test-app" })]));
+  async function enqueue() {
+    const quotes = [quoteSuccess];
     const stream = newStream<Quote>(
       quotes.map((q) => Promise.resolve(q)),
       quoteStreamErrorHandler,
@@ -102,7 +89,7 @@ describe("proxy", () => {
   });
 
   it("delegates quote fetching to a server", async () => {
-    await enqueue(defaultSwapParams);
+    await enqueue();
 
     const quotes = await getRawQuotes({
       config: createConfig({
@@ -113,7 +100,7 @@ describe("proxy", () => {
 
     expect(quotes).toBeDefined();
     expect(quotes.length).toBe(1);
-    expect(quotes?.[0]?.provider).toBe("fabric");
+    expect(quotes?.[0]?.provider).toBe("nordstern");
     expect(new URL(requests[0]?.url || "").pathname).toBe("/api/prepareQuotes");
   }, 10_000);
 
@@ -123,7 +110,7 @@ describe("proxy", () => {
       ...defaultSwapParams,
       recipientAccount,
     };
-    await enqueue(swap);
+    await enqueue();
 
     await getRawQuotes({
       config: createConfig({
@@ -173,7 +160,7 @@ describe("proxy", () => {
   }, 10_000);
 
   it("adds optional headers to the proxy request", async () => {
-    await enqueue(defaultSwapParams);
+    await enqueue();
 
     await getRawQuotes({
       config: createConfig({
@@ -301,7 +288,7 @@ describe("proxy", () => {
     {
       name: "benchmark",
       strategy: {
-        collect: { type: "benchmark", provider: "fabric", minQuotes: 2 },
+        collect: { type: "benchmark", provider: "nordstern", minQuotes: 2 },
         rank: "bestPrice",
       },
       expected: 20n,

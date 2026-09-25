@@ -1,8 +1,8 @@
 import { createPublicClient, http, type PublicClient, parseEther, zeroAddress } from "viem";
 import { base } from "viem/chains";
 import { type Config, createConfig, getQuote, getRawQuotes } from "../index.js";
-import type { FabricQuoteResponse } from "../lib/aggregators/fabric.js";
 import { Aggregator } from "../lib/aggregators/index.js";
+import type { NordsternQuoteResponse } from "../lib/aggregators/nordstern.js";
 import type {
   AggregatorFeature,
   AggregatorMetadata,
@@ -16,7 +16,13 @@ import type {
   SwapParams,
 } from "../lib/types.js";
 
-export const baseRpcUrl = process.env.RPC_URL_8453 || base.rpcUrls.default.http[0];
+const DRPC_API_KEY = process.env.DRPC_API_KEY;
+export const baseRpcUrl =
+  process.env.RPC_URL_8453 ||
+  (DRPC_API_KEY
+    ? `https://lb.drpc.live/base/${encodeURIComponent(DRPC_API_KEY)}`
+    : "https://base.drpc.org");
+export const TEST_RPC_URL = baseRpcUrl;
 export const ETH_WHALE: `0x${string}` = "0x611f7bf868a6212f871e89f7e44684045ddfb09d";
 export const USDC_WHALE: `0x${string}` = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
 
@@ -49,19 +55,8 @@ export const nativeOutputSwap: ExactInSwapParams = {
 
 export const quoteSuccess = {
   success: true,
-  provider: "fabric",
-  details: {
-    blockNumber: 1,
-    amountIn: "1000000",
-    amountOut: "900000",
-    price: 0.9,
-    description: "Test swap",
-    tokens: [],
-    route: { swaps: [], amountIn: "1000000", amountOut: "900000" },
-    transaction: { to: zeroAddress, data: "0x", value: "0" },
-    fees: [],
-    id: "test-quote",
-  } satisfies FabricQuoteResponse,
+  provider: "nordstern",
+  details: {} as NordsternQuoteResponse,
   latency: 100,
   inputChainId: 8453,
   outputChainId: 8453,
@@ -95,7 +90,7 @@ export const simulatedQuoteSuccess = {
 
 export const quoteFailure: Quote = {
   success: false,
-  provider: "fabric",
+  provider: "nordstern",
   error: new Error("Failed to get quote"),
 };
 
