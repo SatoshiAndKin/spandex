@@ -43,3 +43,22 @@ jobs:
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
           RPC_URL_8453: ${{ secrets.RPC_URL_8453 }}
+
+  worker-limits:
+    name: Cold Curve worker (2 CPUs, 512 MiB)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Build SDK
+        run: bun ./scripts/build-packages.ts core
+      - name: Verify cold Curve does not block network providers
+        env:
+          RPC_URL_8453: ${{ secrets.RPC_URL_8453 }}
+        run: |
+          test -n "$RPC_URL_8453" || { echo "::error::RPC_URL_8453 is required"; exit 1; }
+          docker run --rm --cpus=2 --memory=512m --memory-swap=512m \
+            -e RPC_URL_8453 -v "$PWD:/work:ro" -w /work \
+            node:24.21.0 node packages/core/test/verify-curve-worker.mts

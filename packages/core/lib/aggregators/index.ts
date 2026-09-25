@@ -52,6 +52,7 @@ export abstract class Aggregator<C extends ProviderConfig = ProviderConfig> {
   protected abstract tryFetchQuote(
     params: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote>;
 
   /**
@@ -154,14 +155,20 @@ export abstract class Aggregator<C extends ProviderConfig = ProviderConfig> {
         : { ...providerOptions, deadlineMs: this.config.timeoutMs };
     const { delayMs, numRetries, deadlineMs } = resolveTimingControls(effectiveOptions);
 
+    const controller = new AbortController();
     const quoteCall = async () => {
       let numAttempts = 0;
       let error: Quote | null = null;
 
       while (numAttempts <= numRetries) {
+        if (controller.signal.aborted) break;
         try {
           const start = performance.now();
-          const quote = await this.tryFetchQuote(resolvedParams, effectiveOptions || {});
+          const quote = await this.tryFetchQuote(
+            resolvedParams,
+            effectiveOptions || {},
+            controller.signal,
+          );
           const stop = performance.now();
           return {
             ...quote,
@@ -183,7 +190,7 @@ export abstract class Aggregator<C extends ProviderConfig = ProviderConfig> {
 
           // Early terminate to prevent a sleep when we plan to bail
           numAttempts += 1;
-          if (numAttempts > numRetries) {
+          if (numAttempts > numRetries || controller.signal.aborted) {
             break;
           }
           // Sleep for delay * 2 ** numAttempts-1 milliseconds before retrying
@@ -203,6 +210,9 @@ export abstract class Aggregator<C extends ProviderConfig = ProviderConfig> {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const deadlineQuote = new Promise<Quote>((resolve) => {
         timeout = setTimeout(() => {
+          controller.abort(
+            new QuoteError(`MetaAggregator deadline exceeded after ${deadlineMs}ms`, ""),
+          );
           log("debug", "Quote deadline exceeded", { provider: this.name(), deadlineMs });
           resolve({
             success: false,

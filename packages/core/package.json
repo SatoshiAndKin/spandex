@@ -45,8 +45,6 @@
   },
   "files": [
     "dist",
-    "lib",
-    "index.ts",
     "README.md"
   ],
   "scripts": {
@@ -69,5 +67,9 @@
     "typescript": {
       "optional": true
     }
+  },
+  "browser": {
+    "./dist/esm/lib/workers/node.cjs": "./dist/esm/lib/workers/browser.js",
+    "./dist/cjs/lib/workers/node.cjs": "./dist/cjs/lib/workers/browser.js"
   }
 }

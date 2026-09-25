@@ -10,6 +10,8 @@
     "maxSize": 2097152,
     "includes": [
       "packages/**/*.ts",
+      "packages/**/*.cts",
+      "packages/**/*.mts",
       "packages/**/*.tsx",
       "site/**/*.ts",
       "site/**/*.tsx",

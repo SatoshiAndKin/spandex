@@ -17,9 +17,11 @@ import type {
 } from "../lib/types.js";
 
 const DRPC_API_KEY = process.env.DRPC_API_KEY;
-export const baseRpcUrl = process.env.RPC_URL_8453 || (DRPC_API_KEY
-  ? `https://lb.drpc.live/base/${encodeURIComponent(DRPC_API_KEY)}`
-  : "https://base.drpc.org");
+export const baseRpcUrl =
+  process.env.RPC_URL_8453 ||
+  (DRPC_API_KEY
+    ? `https://lb.drpc.live/base/${encodeURIComponent(DRPC_API_KEY)}`
+    : "https://base.drpc.org");
 export const TEST_RPC_URL = baseRpcUrl;
 export const ETH_WHALE: `0x${string}` = "0x611f7bf868a6212f871e89f7e44684045ddfb09d";
 export const USDC_WHALE: `0x${string}` = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";

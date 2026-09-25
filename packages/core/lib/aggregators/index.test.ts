@@ -45,6 +45,8 @@ describe("aggregator", () => {
     expect(mock.count).toBe(1); // Retry should be skipped due to deadline
     expect(quote.success).toBe(false);
     expect((quote as FailedQuote).error?.message).toMatch(/Aggregator deadline exceeded/);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(mock.count).toBe(1); // The late failure must not restart work after the deadline.
   }, 500);
 
   it("clears the deadline timer when the quote resolves first", async () => {

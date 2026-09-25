@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { ok } from "node:assert";
 import type { Address } from "viem";
-import {
-  defaultSwapParams,
-  quoteSuccess,
-  simulatedQuoteSuccess,
-} from "../../test/utils.js";
+import { defaultSwapParams, quoteSuccess, simulatedQuoteSuccess } from "../../test/utils.js";
 import { createConfig } from "../createConfig.js";
 import { getQuote } from "../getQuote.js";
 import { getQuotes } from "../getQuotes.js";
@@ -13,13 +9,7 @@ import { getRawQuotes } from "../getRawQuotes.js";
 import { prepareQuotes } from "../prepareQuotes.js";
 import { prepareSimulatedQuotes } from "../prepareSimulatedQuotes.js";
 import { selectQuote } from "../selectQuote.js";
-import type {
-  Quote,
-  QuoteSelectionStrategy,
-  SimulatedQuote,
-  SimulationOptions,
-  SwapParams,
-} from "../types.js";
+import type { Quote, QuoteSelectionStrategy, SimulatedQuote, SimulationOptions } from "../types.js";
 import { proxy } from "./proxy.js";
 import { deserializeWithBigInt } from "./serde.js";
 import { newStream, quoteStreamErrorHandler, simulatedQuoteStreamErrorHandler } from "./streams.js";

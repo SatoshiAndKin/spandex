@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { parseUnits } from "viem";
 import { defaultSwapParams } from "../../test/utils.js";
-import { curve } from "./curve.js";
+import { type CurveConfig, LocalCurveAggregator } from "./curve-local.js";
+
+const curve = (config: CurveConfig) => new LocalCurveAggregator(config);
 
 const ROUTER = "0x1111111111111111111111111111111111111111";
 const POOL = "0x2222222222222222222222222222222222222222";
