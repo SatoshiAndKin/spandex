@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { PublicClient, StateOverride } from "viem";
-import { parseEther, toHex } from "viem";
+import { decodeFunctionData, erc20Abi, parseEther, toHex } from "viem";
 import { base } from "viem/chains";
 import { defaultSwapParams, quoteSuccess } from "../test/utils.js";
 import { mergeSimulationStateOverrides, simulateQuote, simulateQuotes } from "./simulateQuote.js";
@@ -10,6 +10,77 @@ const slot = toHex(1n, { size: 32 });
 const slotValue = toHex(500_000_000n, { size: 32 });
 
 describe("simulation state overrides", () => {
+  it("uses the provider's approval token and spender for both approval calls", async () => {
+    const requests: CapturedRequest[] = [];
+    const approval = {
+      token: "0x3333333333333333333333333333333333333333",
+      spender: "0x4444444444444444444444444444444444444444",
+    } as const;
+    await simulateQuote({
+      client: createSimulationClient(requests),
+      swap: defaultSwapParams,
+      quote: { ...validQuote(), approval },
+    });
+    const calls = requests[0]?.params[0].blockStateCalls[0]?.calls.slice(0, 2);
+    expect(calls?.map((call) => call.to)).toEqual([approval.token, approval.token]);
+    expect(
+      calls?.map(
+        (call) => decodeFunctionData({ abi: erc20Abi, data: call.data as `0x${string}` }).args?.[0],
+      ),
+    ).toEqual([approval.spender, approval.spender]);
+  });
+
+  it("does not approve native input", async () => {
+    const requests: CapturedRequest[] = [];
+    const quote = await simulateQuote({
+      client: createSimulationClient(requests),
+      swap: { ...defaultSwapParams, inputToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" },
+      quote: validQuote(),
+    });
+    expect(quote.simulation.success).toBe(true);
+    if (quote.simulation.success) {
+      expect(quote.simulation.approvalGasUsed).toBeUndefined();
+      expect(quote.simulation.outputAmount).toBe(100n);
+    }
+    expect(
+      requests[0]?.params[0].blockStateCalls[0]?.calls.some((call) =>
+        String(call.data).startsWith("0x095ea7b3"),
+      ),
+    ).toBe(false);
+  });
+
+  it("reports a failed reset instead of hiding it", async () => {
+    const quote = await simulateQuote({
+      client: createSimulationClient([], { rejectReset: true }),
+      swap: defaultSwapParams,
+      quote: validQuote(),
+    });
+    expect(quote.simulation.success).toBe(false);
+  });
+  it.each([
+    false,
+    true,
+  ])("resets an existing token allowance before simulating (cross-chain: %s)", async (crossChain) => {
+    const requests: CapturedRequest[] = [];
+    const quote = await simulateQuote({
+      client: createSimulationClient(requests, { allowance: 123n }),
+      swap: { ...defaultSwapParams, ...(crossChain ? { outputChainId: 10 } : {}) },
+      quote: validQuote(),
+    });
+    expect(quote.simulation.success).toBe(true);
+    if (quote.simulation.success) {
+      expect(quote.simulation.approvalGasUsed).toBe(2n);
+      expect(quote.simulation.gasUsed).toBe(1n);
+    }
+    const approvals = requests[0]?.params[0].blockStateCalls[0]?.calls.filter((call) =>
+      String(call.data).startsWith("0x095ea7b3"),
+    );
+    expect(
+      approvals?.map(
+        (call) => decodeFunctionData({ abi: erc20Abi, data: call.data as `0x${string}` }).args?.[1],
+      ),
+    ).toEqual([0n, validQuote().inputAmount]);
+  });
   it("uses the RPC gas price on the swap without charging balance probes", async () => {
     const requests: CapturedRequest[] = [];
     const quote = await simulateQuote({
@@ -19,6 +90,7 @@ describe("simulation state overrides", () => {
     });
     expect(quote.simulation.success).toBe(true);
     expect(requests[0]?.params[0].blockStateCalls[0]?.calls.map((call) => call.gasPrice)).toEqual([
+      undefined,
       undefined,
       undefined,
       "0x64",
@@ -40,7 +112,7 @@ describe("simulation state overrides", () => {
       simulationOptions: { gasPrice: 0n },
     });
     expect(quote.simulation.success).toBe(true);
-    expect(requests[0]?.params[0].blockStateCalls[0]?.calls[2]?.gasPrice).toBe("0x0");
+    expect(requests[0]?.params[0].blockStateCalls[0]?.calls[3]?.gasPrice).toBe("0x0");
   });
 
   it("fails simulation when the gas price cannot be obtained", async () => {
@@ -279,7 +351,13 @@ function validQuote(): SuccessfulQuote {
 
 function createSimulationClient(
   requests: CapturedRequest[],
-  options: { before?: bigint; after?: bigint; rejectPricedSwap?: boolean } = {},
+  options: {
+    before?: bigint;
+    after?: bigint;
+    rejectPricedSwap?: boolean;
+    allowance?: bigint;
+    rejectReset?: boolean;
+  } = {},
 ): PublicClient {
   return {
     chain: base,
@@ -287,22 +365,37 @@ function createSimulationClient(
     request: async (request: CapturedRequest) => {
       requests.push(request);
       const calls = request.params[0].blockStateCalls[0]?.calls ?? [];
+      const swapIndex = calls.findIndex((call) => call.gasPrice !== undefined);
+      let allowance = options.allowance ?? 0n;
       return [
         {
           number: "0x1",
-          calls: calls.map((call, index) => ({
-            status: options.rejectPricedSwap && call.gasPrice ? "0x0" : "0x1",
-            ...(options.rejectPricedSwap && call.gasPrice
-              ? { error: { code: 3, message: "gas price rejected" } }
-              : {}),
-            gasUsed: "0x1",
-            returnData:
-              index === 1
-                ? toHex(options.before ?? 100n, { size: 32 })
-                : index === 3
-                  ? toHex(options.after ?? 200n, { size: 32 })
-                  : "0x",
-          })),
+          calls: calls.map((call, index) => {
+            let approvalFailed = false;
+            if (String(call.data).startsWith("0x095ea7b3")) {
+              const decoded = decodeFunctionData({
+                abi: erc20Abi,
+                data: call.data as `0x${string}`,
+              });
+              const amount = decoded.args?.[1] as bigint;
+              approvalFailed =
+                (allowance > 0n && amount > 0n) || (options.rejectReset === true && amount === 0n);
+              if (!approvalFailed) allowance = amount;
+            }
+            return {
+              status: approvalFailed || (options.rejectPricedSwap && call.gasPrice) ? "0x0" : "0x1",
+              ...(options.rejectPricedSwap && call.gasPrice
+                ? { error: { code: 3, message: "gas price rejected" } }
+                : {}),
+              gasUsed: "0x1",
+              returnData:
+                index === swapIndex - 1
+                  ? toHex(options.before ?? 100n, { size: 32 })
+                  : index === swapIndex + 1
+                    ? toHex(options.after ?? 200n, { size: 32 })
+                    : "0x",
+            };
+          }),
         },
       ];
     },

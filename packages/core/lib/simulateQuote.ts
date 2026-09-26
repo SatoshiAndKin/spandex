@@ -10,6 +10,7 @@ import type {
   SimulationSuccess,
   SuccessfulQuote,
   SuccessfulSimulatedQuote,
+  SwapParams,
   TxData,
 } from "./types.js";
 import { isCrossChain, isNativeToken } from "./util/helpers.js";
@@ -126,22 +127,10 @@ async function performSimulation({
 
   try {
     const recipientAccount = swap.recipientAccount ?? swap.swapperAccount;
-    const approvalToken = quote.approval?.token ?? swap.inputToken;
-    const approvalSpender = quote.approval?.spender ?? quote.txData.to;
     const gasPrice = simulationOptions?.gasPrice ?? (await client.getGasPrice());
-    const calls: Array<TxData & { gasPrice?: bigint }> = [];
+    const calls: Array<TxData & { gasPrice?: bigint }> = approvalCalls(swap, quote);
 
-    // Build calls in a stable order: optional approve, recipient balance before, swap, recipient balance after.
-    if (!isNativeToken(swap.inputToken)) {
-      calls.push({
-        to: approvalToken,
-        data: encodeFunctionData({
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [approvalSpender, quote.inputAmount],
-        }),
-      });
-    }
+    // Approval reset, approval, recipient balance before, swap, recipient balance after.
 
     // ERC20 or native balance check before and after the swap
     const balanceCall = buildBalanceCall({
@@ -167,7 +156,7 @@ async function performSimulation({
     // If any call failed, extract error
     validateSimulation(results, calls, block);
 
-    const approvalResult = results.length > 3 ? results[0] : undefined;
+    const approvalGasUsed = sumApprovalGas(results.slice(0, -3));
     const [beforeBalanceResult, swapResult, afterBalanceResult] = results.slice(-3);
 
     // Extract the output amount from the balance deltas and validate it
@@ -191,7 +180,7 @@ async function performSimulation({
       swapResult: swapResult as SimulateCallsReturnType["results"][0],
       latency,
       gasUsed: swapResult?.gasUsed,
-      approvalGasUsed: approvalResult?.gasUsed,
+      approvalGasUsed,
       blockNumber: block.number,
     };
   } catch (error) {
@@ -223,21 +212,9 @@ async function performCrossChainSimulation({
   }
 
   try {
-    const approvalToken = quote.approval?.token ?? swap.inputToken;
-    const approvalSpender = quote.approval?.spender ?? quote.txData.to;
     const gasPrice = simulationOptions?.gasPrice ?? (await client.getGasPrice());
-    const calls: Array<TxData & { gasPrice?: bigint }> = [];
+    const calls: Array<TxData & { gasPrice?: bigint }> = approvalCalls(swap, quote);
 
-    if (!isNativeToken(swap.inputToken)) {
-      calls.push({
-        to: approvalToken,
-        data: encodeFunctionData({
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [approvalSpender, quote.inputAmount],
-        }),
-      });
-    }
     calls.push({ ...quote.txData, gasPrice });
     const time = performance.now();
     const { results, block } = await simulateCalls(client, {
@@ -251,14 +228,14 @@ async function performCrossChainSimulation({
     const latency = performance.now() - time;
     validateSimulation(results, calls, block);
     const swapResult = results[results.length - 1];
-    const approvalResult = results.length > 1 ? results[0] : undefined;
+    const approvalGasUsed = sumApprovalGas(results.slice(0, -1));
     return {
       success: true,
       outputAmount: quote.outputAmount,
       swapResult: swapResult as SimulateCallsReturnType["results"][0],
       latency,
       gasUsed: swapResult?.gasUsed,
-      approvalGasUsed: approvalResult?.gasUsed,
+      approvalGasUsed,
       blockNumber: block.number,
     };
   } catch (error) {
@@ -274,6 +251,24 @@ async function performCrossChainSimulation({
 }
 
 /// Utils ///
+
+// Reset first so CRV, USDT, and other zero-first tokens work with existing allowances.
+// These calls are simulation-only; they never change the wallet's on-chain approvals.
+function approvalCalls(swap: SwapParams, quote: SuccessfulQuote): TxData[] {
+  if (isNativeToken(swap.inputToken)) return [];
+  return [0n, quote.inputAmount].map((amount) => ({
+    to: quote.approval?.token ?? swap.inputToken,
+    data: encodeFunctionData({
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [quote.approval?.spender ?? quote.txData.to, amount],
+    }),
+  }));
+}
+
+function sumApprovalGas(results: SimulateCallsReturnType["results"]): bigint | undefined {
+  return results.length ? results.reduce((sum, result) => sum + result.gasUsed, 0n) : undefined;
+}
 
 function simulationStateOverrides(
   swapperAccount: Address,
