@@ -43,7 +43,7 @@ jobs:
           bun test
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
-          RPC_URL_8453: ${{ secrets.RPC_URL_8453 }}
+          RPC_URL_8453: https://mainnet.base.org
 
   worker-limits:
     name: Cold Curve worker (2 CPUs, 512 MiB)
@@ -57,7 +57,7 @@ jobs:
         run: bun ./scripts/build-packages.ts core
       - name: Verify cold Curve does not block network providers
         env:
-          RPC_URL_8453: ${{ secrets.RPC_URL_8453 }}
+          RPC_URL_8453: https://mainnet.base.org
         run: |
           test -n "$RPC_URL_8453" || { echo "::error::RPC_URL_8453 is required"; exit 1; }
           bun packages/core/test/verify-base-rpc.mts
