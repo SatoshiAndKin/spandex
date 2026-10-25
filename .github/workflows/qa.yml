@@ -39,6 +39,7 @@ jobs:
       - name: Run tests
         run: |
           test -n "$RPC_URL_8453" || { echo "::error::RPC_URL_8453 is required"; exit 1; }
+          bun packages/core/test/verify-base-rpc.mts
           bun test
         env:
           ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
@@ -59,6 +60,7 @@ jobs:
           RPC_URL_8453: ${{ secrets.RPC_URL_8453 }}
         run: |
           test -n "$RPC_URL_8453" || { echo "::error::RPC_URL_8453 is required"; exit 1; }
+          bun packages/core/test/verify-base-rpc.mts
           docker run --rm --cpus=2 --memory=512m --memory-swap=512m \
             -e RPC_URL_8453 -v "$PWD:/work:ro" -w /work \
             node:24.22.1 node packages/core/test/verify-curve-worker.mts
