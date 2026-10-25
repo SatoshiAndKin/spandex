@@ -10,6 +10,8 @@ globalThis.window = window as any;
 // @ts-expect-error
 globalThis.document = window.document as any;
 globalThis.navigator = window.navigator as any;
+globalThis.Event = window.Event as any;
+globalThis.CustomEvent = window.CustomEvent as any;
 // @ts-expect-error
 globalThis.HTMLElement = window.HTMLElement as any;
 // @ts-expect-error
