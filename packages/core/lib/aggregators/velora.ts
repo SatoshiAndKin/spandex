@@ -75,8 +75,9 @@ export class VeloraAggregator extends Aggregator<VeloraConfig> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
-    const response = await this.getSwapQuote(request, options);
+    const response = await this.getSwapQuote(request, options, signal);
     const priceRoute = response.priceRoute;
     const tx = response.txParams;
 
@@ -125,6 +126,7 @@ export class VeloraAggregator extends Aggregator<VeloraConfig> {
   private async getSwapQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<VeloraQuoteResponse> {
     const side: VeloraSide = request.mode === "exactIn" ? "SELL" : "BUY";
     const hasFeeRequest = (options.integratorSwapFeeBps ?? 0) > 0;
@@ -169,6 +171,7 @@ export class VeloraAggregator extends Aggregator<VeloraConfig> {
     }
 
     const response = await fetch(`${this.baseUrl()}/swap?${params.toString()}`, {
+      signal,
       headers: {
         accept: "application/json",
       },

@@ -144,6 +144,7 @@ export class FyndAggregator extends Aggregator<FyndConfig> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
     if (request.mode === "targetOut") {
       throw new QuoteError("fynd aggregator does not support exact output quotes");
@@ -153,7 +154,7 @@ export class FyndAggregator extends Aggregator<FyndConfig> {
       throw new QuoteError("fynd aggregator does not support cross-chain quotes");
     }
 
-    const response = await this.quote(request as ExactInSwapParams, options);
+    const response = await this.quote(request as ExactInSwapParams, options, signal);
     const order = response.orders?.[0];
     if (!order) {
       throw new QuoteError("fynd API returned no orders", response);
@@ -212,6 +213,7 @@ export class FyndAggregator extends Aggregator<FyndConfig> {
   private async quote(
     request: ExactInSwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<FyndQuoteResponse> {
     const url = this.quoteUrl(request.chainId);
     const headers: Record<string, string> = {
@@ -223,6 +225,7 @@ export class FyndAggregator extends Aggregator<FyndConfig> {
     }
 
     const response = await fetch(url, {
+      signal,
       method: "POST",
       headers,
       body: JSON.stringify(buildRequestBody(request, options, this.config)),

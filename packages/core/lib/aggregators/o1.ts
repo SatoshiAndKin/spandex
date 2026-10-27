@@ -88,6 +88,7 @@ export class O1Aggregator extends Aggregator<O1Config> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
     if (request.mode === "targetOut") {
       throw new QuoteError("o1 aggregator does not support exact output quotes");
@@ -106,7 +107,7 @@ export class O1Aggregator extends Aggregator<O1Config> {
       throw new QuoteError("o1 aggregator does not support separate recipient accounts");
     }
 
-    const response = await this.execute(request as ExactInSwapParams, options);
+    const response = await this.execute(request as ExactInSwapParams, options, signal);
     const inputAmount = parseBigInt(response.routePlan.amountIn) ?? request.inputAmount;
     const outputAmount = parseBigInt(response.routePlan.expectedAmountOut) ?? 0n;
     const networkFee = parseBigInt(response.routePlan.gasEstimate?.gasCostWei) ?? 0n;
@@ -144,6 +145,7 @@ export class O1Aggregator extends Aggregator<O1Config> {
   private async execute(
     request: ExactInSwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<O1QuoteResponse> {
     if (!this.config.baseUrl) {
       throw new Error(
@@ -155,6 +157,7 @@ export class O1Aggregator extends Aggregator<O1Config> {
     }
 
     const response = await fetch(`${this.baseUrl()}/execute`, {
+      signal,
       method: "POST",
       headers: {
         accept: "application/json",

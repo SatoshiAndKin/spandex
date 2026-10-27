@@ -90,12 +90,13 @@ export class NordsternAggregator extends Aggregator<NordsternConfig> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
     if (request.mode === "targetOut") {
       throw new QuoteError("Nordstern aggregator does not support exact output quotes");
     }
 
-    const response = await this.getQuote(request as ExactInSwapParams, options);
+    const response = await this.getQuote(request as ExactInSwapParams, options, signal);
 
     const inputAmount = BigInt(response.fromAmount);
     const outputAmount = BigInt(response.toAmount);
@@ -131,12 +132,14 @@ export class NordsternAggregator extends Aggregator<NordsternConfig> {
   private async getQuote(
     request: ExactInSwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<NordsternQuoteResponse> {
     const params = new URLSearchParams(extractQueryParams(request, options));
 
     const response = await fetch(
       `${this.baseUrl()}/aggregator/${request.chainId}?${params.toString()}`,
       {
+        signal,
         headers: {
           accept: "application/json",
           Referer: NORDSTERN_REFERER,

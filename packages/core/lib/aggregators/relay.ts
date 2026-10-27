@@ -55,9 +55,11 @@ export class RelayAggregator extends Aggregator<RelayConfig> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
     const payload = buildRequest(request, options);
     const response = await fetch(`${this.config.url || "https://api.relay.link"}/quote`, {
+      signal,
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(payload),

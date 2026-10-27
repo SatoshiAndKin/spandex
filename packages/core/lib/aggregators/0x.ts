@@ -62,12 +62,13 @@ export class ZeroXAggregator extends Aggregator<ZeroXConfig> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
     if (request.mode === "targetOut") {
       throw new QuoteError("0x aggregator does not support exact output quotes");
     }
 
-    const response = await this.makeRequest(request as ExactInSwapParams, options);
+    const response = await this.makeRequest(request as ExactInSwapParams, options, signal);
     const pricing = zeroXPricing(request, response);
 
     return {
@@ -100,6 +101,7 @@ export class ZeroXAggregator extends Aggregator<ZeroXConfig> {
   private async makeRequest(
     request: ExactInSwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<ZeroXQuoteResponse> {
     if (!this.config.apiKey) {
       throw new Error("0x API key is not set. Please set the ZEROX_API_KEY environment variable.");
@@ -110,6 +112,7 @@ export class ZeroXAggregator extends Aggregator<ZeroXConfig> {
     const response = await fetch(
       `https://api.0x.org/swap/allowance-holder/quote?${params.toString()}`,
       {
+        signal,
         headers: {
           accept: "application/json",
           "0x-api-key": this.config.apiKey,
