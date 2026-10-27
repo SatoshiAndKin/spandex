@@ -72,12 +72,13 @@ export class LifiAggregator extends Aggregator<LifiConfig> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
     if (request.mode === "targetOut") {
       throw new QuoteError("LI.FI aggregator does not support exact output quotes");
     }
 
-    const response = await this.getQuote(request as ExactInSwapParams, options);
+    const response = await this.getQuote(request as ExactInSwapParams, options, signal);
     const estimate = response.estimate;
     if (!estimate) {
       throw new QuoteError("LI.FI API response missing estimate data", response);
@@ -133,10 +134,11 @@ export class LifiAggregator extends Aggregator<LifiConfig> {
   private async getQuote(
     request: ExactInSwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<LifiQuoteResponse> {
     const params = new URLSearchParams(buildQueryParams(request, options));
     const url = `${DEFAULT_BASE_URL}/quote?${params.toString()}`;
-    const response = await fetch(url, { headers: this.headers() });
+    const response = await fetch(url, { headers: this.headers(), signal });
     const body = (await response.json()) as LifiQuoteResponse;
     if (!response.ok) {
       throw new QuoteError(`LI.FI API request failed with status ${response.status}`, body);

@@ -97,6 +97,7 @@ export class MobulaAggregator extends Aggregator<MobulaConfig> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
     if (request.mode === "targetOut") {
       throw new QuoteError("mobula aggregator does not support exact output quotes");
@@ -106,7 +107,7 @@ export class MobulaAggregator extends Aggregator<MobulaConfig> {
       throw new QuoteError("mobula aggregator does not support cross-chain quotes");
     }
 
-    const data = await this.quote(request as ExactInSwapParams, options);
+    const data = await this.quote(request as ExactInSwapParams, options, signal);
     const tx = data.evm?.transaction;
     if (!tx) {
       throw new QuoteError("mobula quote did not include an EVM transaction", data);
@@ -149,6 +150,7 @@ export class MobulaAggregator extends Aggregator<MobulaConfig> {
   private async quote(
     request: ExactInSwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<MobulaQuoteResponse> {
     if (!this.config.apiKey) {
       throw new Error(
@@ -158,6 +160,7 @@ export class MobulaAggregator extends Aggregator<MobulaConfig> {
 
     const query = buildQueryParams(request, options, this.config, this.supportsFeature.bind(this));
     const response = await fetch(`${this.baseUrl()}/swap/quoting?${query.toString()}`, {
+      signal,
       method: "GET",
       headers: {
         accept: "application/json",

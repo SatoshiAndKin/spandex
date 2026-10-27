@@ -96,12 +96,13 @@ export class KyberAggregator extends Aggregator<KyberConfig> {
   protected override async tryFetchQuote(
     request: SwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<SuccessfulQuote> {
     if (request.mode === "targetOut") {
       throw new QuoteError("KyberSwap aggregator does not support exact output quotes");
     }
 
-    const response = await this.getRoute(request as ExactInSwapParams, options);
+    const response = await this.getRoute(request as ExactInSwapParams, options, signal);
     const pricing = buildKyberPricing(request as ExactInSwapParams, response);
     const networkFee =
       BigInt(response.totalGas) * BigInt(Math.round(Number(response.gasPriceGwei) * 10 ** 9));
@@ -135,6 +136,7 @@ export class KyberAggregator extends Aggregator<KyberConfig> {
   private async getRoute(
     query: ExactInSwapParams,
     options: SwapOptions,
+    signal?: AbortSignal,
   ): Promise<KyberQuoteResponse> {
     const chain = chainNameLookup[query.chainId];
     const params = new URLSearchParams(extractQueryParams(query, options));
@@ -142,6 +144,7 @@ export class KyberAggregator extends Aggregator<KyberConfig> {
     const output = await fetch(
       `https://aggregator-api.kyberswap.com/${chain}/route/encode?${params.toString()}`,
       {
+        signal,
         headers: {
           accept: "application/json",
           "X-Client-Id": this.config.clientId,
