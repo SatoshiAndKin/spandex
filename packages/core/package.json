@@ -52,7 +52,7 @@
     "prepack": "bun --cwd ../.. ./scripts/build-packages.ts core"
   },
   "dependencies": {
-    "@curvefi/api": "2.71.2"
+    "@curvefi/api": "2.72.5"
   },
   "devDependencies": {
     "@types/bun": "latest",
