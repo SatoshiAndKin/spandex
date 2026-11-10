@@ -1,5 +1,12 @@
 # @spandex/core
 
+## 0.11.2
+
+### Patch Changes
+
+- 0cc0567: Upgrade the Curve SDK to 2.71.2 to use its current pool and gas data endpoints and reduce cold route initialization work.
+- 1190bcb: Upgrade the Curve SDK to 2.72.5 for FX swap pool and ABI fixes, new-pool token decimals, current gauge metadata, and broken base-pool diagnostics.
+
 ## 0.11.1
 
 ### Patch Changes
