@@ -116,6 +116,8 @@ describe("Relay", () => {
         config: testConfig([relay()]),
         swap: {
           ...usdcBalanceSwap,
+          // Aave’s Base USDC reserve holds transferable USDC for the live simulation.
+          swapperAccount: "0x4e65fe4dba92790696d040ac24aa414708f5c0ab",
           outputChainId: 10,
         },
       })
