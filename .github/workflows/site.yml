@@ -2,6 +2,10 @@ name: Site building
 on:
   pull_request:
 
+concurrency:
+  group: pr-ci-site.yml-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build site
