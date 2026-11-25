@@ -8,14 +8,6 @@ concurrency:
 
 jobs:
   build:
-    name: Build site
-    runs-on: ubuntu-slim
-
-    steps:
-      - name: Clone repository
-        uses: actions/checkout@v4
-      - name: Setup
-        uses: ./.github/actions/setup
-      - name: Build site
-        working-directory: ./site
-        run: bun run build
+    permissions:
+      contents: read
+    uses: SatoshiAndKin/spandex/.github/workflows/site-reviewed-linux.yml@196cd47498cc5f9fd9a7bf9a0e104aae4bf23f9e
