@@ -1,0 +1,24 @@
+name: Reviewed Linux site build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.repository == 'SatoshiAndKin/spandex'
+    name: Build site
+    runs-on:
+      group: ski-ci-public-linux
+      labels: ski-kvm-public-pr
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Build site
+        working-directory: ./site
+        run: bun run build

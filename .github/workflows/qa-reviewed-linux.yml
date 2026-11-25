@@ -1,0 +1,78 @@
+name: Reviewed Linux QA
+
+on:
+  workflow_call:
+    secrets:
+      ZEROX_API_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    if: github.repository == 'SatoshiAndKin/spandex'
+    name: Audit, Lint & Format
+    runs-on:
+      group: ski-ci-public-linux
+      labels: ski-kvm-public-pr
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Audit dependencies
+        run: bun audit --audit-level=critical
+      - name: Lint & Format
+        run: bun run lint
+
+  build:
+    if: github.repository == 'SatoshiAndKin/spandex'
+    name: Build & Test
+    needs: lint
+    runs-on:
+      group: ski-ci-public-linux
+      labels: ski-kvm-public-pr
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Setup foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      - name: Build packages
+        run: bun run build
+      - name: Typecheck source, tests, and public imports
+        run: bun run typecheck
+      - name: Run tests
+        run: |
+          test -n "$RPC_URL_8453" || { echo "::error::RPC_URL_8453 is required"; exit 1; }
+          bun packages/core/test/verify-base-rpc.mts
+          bun test
+        env:
+          ZEROX_API_KEY: ${{ secrets.ZEROX_API_KEY }}
+          RPC_URL_8453: https://mainnet.base.org
+
+  worker-limits:
+    if: github.repository == 'SatoshiAndKin/spandex'
+    name: Cold Curve worker (2 CPUs, 512 MiB)
+    needs: lint
+    runs-on:
+      group: ski-ci-public-linux
+      labels: ski-kvm-public-pr
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Build SDK
+        run: bun ./scripts/build-packages.ts core
+      - name: Verify cold Curve does not block network providers
+        env:
+          RPC_URL_8453: https://mainnet.base.org
+        run: |
+          test -n "$RPC_URL_8453" || { echo "::error::RPC_URL_8453 is required"; exit 1; }
+          bun packages/core/test/verify-base-rpc.mts
+          docker run --rm --cpus=2 --memory=512m --memory-swap=512m \
+            -e RPC_URL_8453 -v "$PWD:/work:ro" -w /work \
+            node:24.22.1 node packages/core/test/verify-curve-worker.mts
